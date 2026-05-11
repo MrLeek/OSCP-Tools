@@ -1,28 +1,19 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────
 # OSCP Commander — Start Script
-# Usage: ./start.sh [path/to/commands/dir]
-# Default commands dir: ./commands (relative to this script)
-# ─────────────────────────────────────────────────────────────
-
+# Usage: ./start.sh [path/to/OSCP-CheatSheet]
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CHEATSHEET="${1:-$HOME/OSCP-CheatSheet}"
 
-# Allow overriding the commands dir (e.g. point at your git repo's commands/ folder)
-COMMANDS_DIR="${1:-$SCRIPT_DIR/commands}"
-
-if [ ! -d "$COMMANDS_DIR" ]; then
-  echo "[!] Commands directory not found: $COMMANDS_DIR"
-  exit 1
+if [ ! -d "$CHEATSHEET/.git" ]; then
+  echo "[!] Warning: $CHEATSHEET is not a git repo — git sync disabled"
 fi
 
-echo "[*] Commands dir: $COMMANDS_DIR"
-echo "[*] Starting OSCP Commander on http://localhost:50000"
-echo "[*] Press Ctrl-C to stop"
+echo "[*] Script dir:  $SCRIPT_DIR"
+echo "[*] Cheatsheet:  $CHEATSHEET"
+echo "[*] Starting on  http://localhost:50000"
 
-export COMMANDS_DIR="$COMMANDS_DIR"
+pip3 install flask flask-cors -q --break-system-packages 2>/dev/null
+
+export CHEATSHEET_DIR="$CHEATSHEET"
 cd "$SCRIPT_DIR"
-
-# Install deps if needed (Kali usually has pip3)
-pip3 install -r requirements.txt -q --break-system-packages 2>/dev/null
-
 python3 server.py
