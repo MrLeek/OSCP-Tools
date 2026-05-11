@@ -1,0 +1,10 @@
+# === NMAP WINRM ===
+nmap -sV -p 5985,5986 {{TARGET}}
+
+# === CONNECTING ===
+evil-winrm -I {{TARGET}} -u {{USER}} -p {{PASS}}
+evil-winrm -I {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
+crackmapexec winrm {{TARGET}} -u {{USER}} -p {{PASS}}
+# PowerShell remoting
+Enter-PSSession -ComputerName {{TARGET}} -Credential (Get-Credential)
+# Note: WinRM::WinRMAuthorizationError = creds work but user not in Administrators or Remote Management Users

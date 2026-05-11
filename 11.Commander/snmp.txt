@@ -1,0 +1,17 @@
+# === NMAP SNMP SCRIPTS ===
+sudo nmap -sU --open -p 161 {{TARGET}}
+sudo nmap -sV -sU -p 161 --script snmp-brute --script-args snmp-brute.communitiesdb=/usr/share/seclists/Discovery/SNMP/common-snmp-community-strings-onesixtyone.txt {{TARGET}}
+
+# === COMMUNITY STRING BRUTE FORCE ===
+onesixtyone -c /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings-onesixtyone.txt {{TARGET}}
+
+# === SNMPWALK ENUMERATION ===
+snmpwalk -c public -v1 -t 10 {{TARGET}}
+snmp-check {{TARGET}} -c public
+# Targeted OID queries
+snmpwalk -c public -v1 {{TARGET}} 1.3.6.1.4.1.77.1.2.25
+snmpwalk -c public -v1 {{TARGET}} 1.3.6.1.2.1.6.13.1.3
+snmpwalk -c public -v1 {{TARGET}} 1.3.6.1.2.1.25.4.2.1.2
+# Extended objects - can leak scripts running as root
+snmpwalk -v1 -c public {{TARGET}} NET-SNMP-EXTEND-MIB::nsExtendObjects
+snmpwalk -v1 -c public {{TARGET}} NET-SNMP-EXTEND-MIB::nsExtendOutputFull
