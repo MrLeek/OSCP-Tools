@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSCP Commander</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --bg:          #0d1117;
+    --bg2:         #161b22;
+    --bg3:         #1c2333;
+    --border:      #30363d;
+    --border-hi:   #58a6ff;
+    --green:       #39d353;
+    --green-dim:   #196127;
+    --red:         #f85149;
+    --yellow:      #e3b341;
+    --blue:        #58a6ff;
+    --purple:      #bc8cff;
+    --text:        #e6edf3;
+    --text-dim:    #7d8590;
+    --text-muted:  #484f58;
+    --accent:      #238636;
+    --accent-hi:   #2ea043;
+    --done-bg:     #161b22;
+    --done-text:   #3d444d;
+    --tab-active:  #58a6ff;
+    --radius:      6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 15px;
+    color: var(--green);
+    letter-spacing: 2px;
+    white-space: nowrap;
+  }
+
+  .logo span { color: var(--red); }
+
+  .session-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .session-label {
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  select, input[type="text"] {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    outline: none;
+  }
+
+  select:focus, input[type="text"]:focus {
+    border-color: var(--border-hi);
+  }
+
+  #session-select { min-width: 180px; }
+
+  .new-session-btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+
+  .new-session-btn:hover { background: var(--accent-hi); }
+
+  .refresh-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .refresh-btn:hover { border-color: var(--border-hi); color: var(--text); }
+
+  /* ── Tab Bar ── */
+  .tabbar {
+    display: flex;
+    gap: 0;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    padding: 0 8px;
+  }
+
+  .tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px 16px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .tab-btn:hover { color: var(--text); }
+
+  .tab-btn.active {
+    color: var(--tab-active);
+    border-bottom-color: var(--tab-active);
+  }
+
+  /* ── Main Layout ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Variables Panel ── */
+  .vars-panel {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-title {
+    padding: 10px 12px 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .vars-table {
+    overflow-y: auto;
+    flex: 1;
+    padding: 8px;
+  }
+
+  .var-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 6px;
+    align-items: center;
+  }
+
+  .var-key {
+    color: var(--yellow);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help;
+  }
+
+  .var-input {
+    width: 100%;
+    font-size: 11px;
+    padding: 3px 6px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 3px;
+    font-family: inherit;
+  }
+
+  .var-input:focus { border-color: var(--yellow); outline: none; }
+  .var-input.filled { border-color: var(--green-dim); color: var(--green); }
+
+  .vars-actions {
+    padding: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .btn-sm {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .btn-sm:hover { border-color: var(--border-hi); color: var(--text); }
+
+  /* ── Commands Panel ── */
+  .commands-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .section-block {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 7px 12px;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--blue);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .section-progress {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .cmd-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    position: relative;
+  }
+
+  .cmd-row:last-child { border-bottom: none; }
+
+  .cmd-row:hover:not(.done) { background: rgba(88, 166, 255, 0.04); }
+
+  .cmd-row.done {
+    background: var(--done-bg);
+    opacity: 0.45;
+  }
+
+  .cmd-row.done .cmd-text {
+    text-decoration: line-through;
+    color: var(--done-text);
+  }
+
+  .cmd-row.done .cmd-comment { color: var(--text-muted); }
+
+  .cmd-run-btn {
+    flex-shrink: 0;
+    width: 28px;
+    align-self: stretch;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .cmd-run-btn:hover { background: var(--accent); color: #fff; }
+  .cmd-row.done .cmd-run-btn { cursor: default; }
+  .cmd-row.done .cmd-run-btn:hover { background: transparent; color: var(--text-muted); }
+
+  .cmd-content {
+    flex: 1;
+    padding: 6px 10px;
+    min-width: 0;
+  }
+
+  .cmd-comment {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+    font-style: italic;
+  }
+
+  .cmd-text {
+    font-size: 12px;
+    color: var(--text);
+    word-break: break-all;
+    white-space: pre-wrap;
+    line-height: 1.6;
+  }
+
+  /* Highlight placeholders */
+  .cmd-text .placeholder {
+    color: var(--yellow);
+    background: rgba(227, 179, 65, 0.1);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+
+  .cmd-text .placeholder.filled {
+    color: var(--green);
+    background: rgba(57, 211, 83, 0.1);
+  }
+
+  .cmd-text .placeholder.missing {
+    color: var(--red);
+    background: rgba(248, 81, 73, 0.1);
+  }
+
+  .cmd-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px;
+    gap: 2px;
+    border-left: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .cmd-copy-btn, .cmd-toggle-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 3px 5px;
+    border-radius: 3px;
+    font-family: inherit;
+    line-height: 1;
+  }
+
+  .cmd-copy-btn:hover { color: var(--blue); background: rgba(88,166,255,0.1); }
+  .cmd-toggle-btn:hover { color: var(--yellow); background: rgba(227,179,65,0.1); }
+  .cmd-row.done .cmd-toggle-btn { color: var(--green-dim); }
+
+  /* ── Status Toast ── */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    border: 1px solid;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .toast.show { opacity: 1; }
+  .toast.ok { background: #0d1f0f; border-color: var(--green); color: var(--green); }
+  .toast.err { background: #1f0d0d; border-color: var(--red); color: var(--red); }
+  .toast.info { background: #0d1520; border-color: var(--blue); color: var(--blue); }
+
+  /* ── Shortcut hint ── */
+  .shortcut-hint {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  kbd {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-family: inherit;
+    font-size: 10px;
+  }
+
+  /* ── Empty / Loading states ── */
+  .loading, .empty {
+    padding: 40px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  /* ── Session new modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    display: none;
+  }
+
+  .modal-overlay.show { display: flex; }
+
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    min-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .modal-title {
+    font-size: 12px;
+    color: var(--blue);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .modal-desc { font-size: 11px; color: var(--text-dim); }
+
+  .modal-row { display: flex; gap: 8px; }
+
+  .modal-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    outline: none;
+  }
+
+  .modal-input:focus { border-color: var(--border-hi); }
+
+  .modal-confirm {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .modal-confirm:hover { background: var(--accent-hi); }
+
+  .modal-cancel {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .modal-cancel:hover { border-color: var(--red); color: var(--red); }
+
+  /* Focus highlight for keyboard nav */
+  .cmd-row:focus-within:not(.done) { outline: 1px solid var(--border-hi); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+  <div class="logo">OSCP <span>//</span> COMMANDER</div>
+
+  <div class="session-block">
+    <span class="session-label">Screen Session</span>
+    <select id="session-select">
+      <option value="">— select session —</option>
+    </select>
+    <button class="new-session-btn" onclick="openNewSessionModal()">+ New</button>
+    <button class="refresh-btn" onclick="refreshSessions()" title="Refresh screen sessions">↺ Sessions</button>
+  </div>
+</div>
+
+<!-- ── Tab Bar ── -->
+<div class="tabbar" id="tabbar"></div>
+
+<!-- ── Main ── -->
+<div class="main">
+  <!-- Variables panel -->
+  <div class="vars-panel">
+    <div class="panel-title">Variables</div>
+    <div class="vars-table" id="vars-table">
+      <div class="loading">Select a session to edit variables</div>
+    </div>
+    <div class="vars-actions">
+      <button class="btn-sm" onclick="saveVariables()">💾 Save</button>
+      <button class="btn-sm" onclick="clearVariables()">✕ Clear</button>
+    </div>
+  </div>
+
+  <!-- Commands panel -->
+  <div class="commands-panel" id="commands-panel">
+    <div class="loading">Loading commands…</div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast"></div>
+
+<!-- ── Shortcut hint ── -->
+<div class="shortcut-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> on a focused command to send · <kbd>C</kbd> to copy</div>
+
+<!-- ── New Session Modal ── -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title">New Screen Session</div>
+    <div class="modal-desc">
+      This will run <code>screen -S &lt;name&gt;</code> in the background.<br>
+      Name it after the box (e.g. <code>box1</code>, <code>dc01</code>).
+    </div>
+    <div class="modal-row">
+      <input class="modal-input" id="new-session-name" placeholder="e.g. box1" maxlength="32">
+      <button class="modal-confirm" onclick="createSession()">Create</button>
+      <button class="modal-cancel" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentTab   = null;
+let currentData  = {};          // tab -> { sections }
+let doneSet      = new Set();   // "tabId:sectionIdx:cmdIdx"
+let tabs         = [];
+let variables    = {};          // session -> { KEY: value }
+let allVariables = [];          // [{key, description, value}]
+let currentSession = '';
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+async function init() {
+  await loadTabs();
+  await refreshSessions();
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+async function loadTabs() {
+  const res  = await fetch('/api/tabs');
+  const data = await res.json();
+  tabs = data.tabs;
+
+  const bar = document.getElementById('tabbar');
+  bar.innerHTML = '';
+  tabs.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn';
+    btn.dataset.tabId = t.id;
+    btn.textContent = `${t.icon} ${t.label}`;
+    btn.onclick = () => switchTab(t.id);
+    bar.appendChild(btn);
+  });
+
+  if (tabs.length) switchTab(tabs[0].id);
+}
+
+async function switchTab(tabId) {
+  currentTab = tabId;
+
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tabId === tabId);
+  });
+
+  if (!currentData[tabId]) {
+    await loadCommands(tabId);
+  }
+  renderCommands(tabId);
+}
+
+async function loadCommands(tabId) {
+  const res  = await fetch(`/api/commands/${tabId}`);
+  const data = await res.json();
+  currentData[tabId] = data;
+}
+
+// ─── Commands Rendering ───────────────────────────────────────────────────────
+function renderCommands(tabId) {
+  const panel = document.getElementById('commands-panel');
+  const data  = currentData[tabId];
+  if (!data || data.error) {
+    panel.innerHTML = `<div class="empty">⚠ ${data?.error || 'No data'}</div>`;
+    return;
+  }
+
+  panel.innerHTML = '';
+  const vars = variables[currentSession] || {};
+
+  data.sections.forEach((section, si) => {
+    const block = document.createElement('div');
+    block.className = 'section-block';
+
+    const doneCount = section.commands.filter((_, ci) =>
+      doneSet.has(`${tabId}:${si}:${ci}`)
+    ).length;
+
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    header.innerHTML = `
+      <span>${section.section || 'Commands'}</span>
+      <span class="section-progress">${doneCount}/${section.commands.length}</span>
+    `;
+    block.appendChild(header);
+
+    section.commands.forEach((cmd, ci) => {
+      const key  = `${tabId}:${si}:${ci}`;
+      const done = doneSet.has(key);
+
+      const row = document.createElement('div');
+      row.className = `cmd-row${done ? ' done' : ''}`;
+      row.tabIndex = 0;
+      row.dataset.key = key;
+      row.dataset.cmd = cmd.cmd;
+
+      // Run button (▶)
+      const runBtn = document.createElement('button');
+      runBtn.className = 'cmd-run-btn';
+      runBtn.title = 'Ctrl+Enter to send to screen session';
+      runBtn.textContent = '▶';
+      runBtn.onclick = (e) => { e.stopPropagation(); sendCommand(key, cmd.cmd); };
+
+      // Content
+      const content = document.createElement('div');
+      content.className = 'cmd-content';
+
+      if (cmd.comment) {
+        const comment = document.createElement('div');
+        comment.className = 'cmd-comment';
+        comment.textContent = '# ' + cmd.comment;
+        content.appendChild(comment);
+      }
+
+      const cmdText = document.createElement('div');
+      cmdText.className = 'cmd-text';
+      cmdText.innerHTML = renderCmdWithVars(cmd.cmd, vars);
+      content.appendChild(cmdText);
+
+      // Actions
+      const actions = document.createElement('div');
+      actions.className = 'cmd-actions';
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'cmd-copy-btn';
+      copyBtn.title = 'Copy (with vars substituted)';
+      copyBtn.textContent = '⎘';
+      copyBtn.onclick = (e) => { e.stopPropagation(); copyCommand(cmd.cmd); };
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'cmd-toggle-btn';
+      toggleBtn.title = done ? 'Mark undone' : 'Mark done';
+      toggleBtn.textContent = done ? '↺' : '✓';
+      toggleBtn.onclick = (e) => { e.stopPropagation(); toggleDone(key, tabId); };
+
+      actions.appendChild(copyBtn);
+      actions.appendChild(toggleBtn);
+
+      row.appendChild(runBtn);
+      row.appendChild(content);
+      row.appendChild(actions);
+
+      // Keyboard: Ctrl+Enter to send
+      row.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'Enter') {
+          e.preventDefault();
+          sendCommand(key, cmd.cmd);
+        }
+        if (e.key === 'c' && !e.ctrlKey) {
+          copyCommand(cmd.cmd);
+        }
+      });
+
+      block.appendChild(row);
+    });
+
+    panel.appendChild(block);
+  });
+}
+
+function renderCmdWithVars(cmd, vars) {
+  return cmd.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    const val = vars[key];
+    if (!val) {
+      return `<span class="placeholder missing">${match}</span>`;
+    }
+    return `<span class="placeholder filled" title="${key}=${val}">${val}</span>`;
+  });
+}
+
+// ─── Variables ────────────────────────────────────────────────────────────────
+async function loadVariables(session) {
+  if (!session) {
+    renderVariables([]);
+    return;
+  }
+  const res  = await fetch(`/api/variables/${encodeURIComponent(session)}`);
+  const data = await res.json();
+  allVariables = data.variables;
+  if (!variables[session]) variables[session] = {};
+  allVariables.forEach(v => {
+    if (v.value) variables[session][v.key] = v.value;
+  });
+  renderVariables(allVariables);
+}
+
+function renderVariables(varList) {
+  const table = document.getElementById('vars-table');
+  if (!varList.length) {
+    table.innerHTML = '<div class="loading">Select a session to edit variables</div>';
+    return;
+  }
+
+  table.innerHTML = '';
+  varList.forEach(v => {
+    const row = document.createElement('div');
+    row.className = 'var-row';
+
+    const key = document.createElement('div');
+    key.className = 'var-key';
+    key.textContent = v.key;
+    key.title = v.description;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = `var-input${v.value ? ' filled' : ''}`;
+    input.placeholder = v.description;
+    input.value = v.value || '';
+    input.dataset.varKey = v.key;
+
+    input.addEventListener('input', () => {
+      input.classList.toggle('filled', !!input.value);
+      if (!variables[currentSession]) variables[currentSession] = {};
+      variables[currentSession][v.key] = input.value;
+      // Re-render commands to update placeholder highlighting
+      if (currentTab) renderCommands(currentTab);
+    });
+
+    row.appendChild(key);
+    row.appendChild(input);
+    table.appendChild(row);
+  });
+}
+
+async function saveVariables() {
+  if (!currentSession) { showToast('No session selected', 'err'); return; }
+  const vars = variables[currentSession] || {};
+  await fetch(`/api/variables/${encodeURIComponent(currentSession)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ variables: vars })
+  });
+  showToast('Variables saved', 'ok');
+}
+
+function clearVariables() {
+  if (!currentSession) return;
+  variables[currentSession] = {};
+  document.querySelectorAll('.var-input').forEach(i => {
+    i.value = '';
+    i.classList.remove('filled');
+  });
+  if (currentTab) renderCommands(currentTab);
+}
+
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+async function refreshSessions() {
+  const res  = await fetch('/api/sessions');
+  const data = await res.json();
+  const sel  = document.getElementById('session-select');
+  const prev = sel.value;
+
+  sel.innerHTML = '<option value="">— select session —</option>';
+  data.sessions.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    sel.appendChild(opt);
+  });
+
+  // Restore previous selection if still present
+  if (prev && data.sessions.includes(prev)) sel.value = prev;
+
+  sel.onchange = () => onSessionChange(sel.value);
+  if (sel.value) onSessionChange(sel.value);
+}
+
+async function onSessionChange(session) {
+  currentSession = session;
+  await loadVariables(session);
+  if (currentTab) renderCommands(currentTab);
+}
+
+function openNewSessionModal() {
+  document.getElementById('modal-overlay').classList.add('show');
+  document.getElementById('new-session-name').value = '';
+  document.getElementById('new-session-name').focus();
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+}
+
+async function createSession() {
+  const name = document.getElementById('new-session-name').value.trim();
+  if (!name) return;
+  if (!/^[a-zA-Z0-9_\-]+$/.test(name)) {
+    showToast('Session name: alphanumeric, _ and - only', 'err');
+    return;
+  }
+
+  // Fire and forget — screen -dmS creates a detached session
+  await fetch('/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  closeModal();
+  await refreshSessions();
+
+  // Select the new session
+  const sel = document.getElementById('session-select');
+  // Find matching option (session name might include PID prefix)
+  for (const opt of sel.options) {
+    if (opt.value.endsWith('.' + name) || opt.value === name) {
+      sel.value = opt.value;
+      onSessionChange(opt.value);
+      break;
+    }
+  }
+  showToast(`Screen session '${name}' created`, 'ok');
+}
+
+// Handle Enter in modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('modal-overlay').classList.contains('show')) {
+    createSession();
+  }
+  if (e.key === 'Escape') closeModal();
+});
+
+// ─── Send / Copy / Done ───────────────────────────────────────────────────────
+async function sendCommand(key, rawCmd) {
+  if (!currentSession) {
+    showToast('No screen session selected!', 'err');
+    return;
+  }
+  const vars = variables[currentSession] || {};
+
+  const res  = await fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: currentSession, command: rawCmd, variables: vars })
+  });
+  const data = await res.json();
+
+  if (data.status === 'ok') {
+    showToast(`→ ${currentSession}`, 'ok');
+    toggleDone(key, currentTab, true);
+  } else {
+    showToast(`Error: ${data.error}`, 'err');
+  }
+}
+
+function copyCommand(rawCmd) {
+  const vars = variables[currentSession] || {};
+  let cmd = rawCmd.replace(/\{\{(\w+)\}\}/g, (m, k) => vars[k] || m);
+  navigator.clipboard.writeText(cmd).then(() => showToast('Copied to clipboard', 'info'));
+}
+
+function toggleDone(key, tabId, forceTrue = false) {
+  if (forceTrue) {
+    doneSet.add(key);
+  } else {
+    if (doneSet.has(key)) doneSet.delete(key);
+    else doneSet.add(key);
+  }
+  renderCommands(tabId);
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
