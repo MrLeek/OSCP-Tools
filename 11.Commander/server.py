@@ -1,246 +1,174 @@
 #!/usr/bin/env python3
 """
 OSCP Commander — Backend Server
-Single-folder deployment. All files live alongside this script.
+Uses curated .txt command files. Single-folder deployment.
 """
 
 import os
 import re
 import subprocess
-import json
 import threading
 import time
 from pathlib import Path
-from flask import Flask, jsonify, request, send_from_directory, Response
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-BASE_DIR      = Path(__file__).parent.resolve()
-CHEATSHEET    = Path(os.environ.get('CHEATSHEET_DIR', Path.home() / 'OSCP-CheatSheet')).resolve()
-GIT_LOCK      = threading.Lock()
+BASE_DIR     = Path(__file__).parent.resolve()
+COMMANDS_DIR = Path(os.environ.get('COMMANDS_DIR', BASE_DIR / 'commands')).resolve()
+CHEATSHEET   = Path(os.environ.get('CHEATSHEET_DIR', Path.home() / 'OSCP-CheatSheet')).resolve()
+GIT_LOCK     = threading.Lock()
 
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
-# ── In-memory state (resets on server restart — by design) ───────────────────
-boxes       = {}   # box_id -> { name, os, session, ports, variables, done_cmds }
-git_status  = {'last_pull': None, 'changed_files': [], 'new_cmds': [], 'error': None}
+# ── In-memory state ───────────────────────────────────────────────────────────
+boxes      = {}
+git_status = {'last_pull': None, 'changed_files': [], 'new_cmds': [], 'error': None}
 
-# ── Variable defaults per OS ──────────────────────────────────────────────────
+# ── Variable definitions ──────────────────────────────────────────────────────
 COMMON_VARS = [
-    {'key': 'TARGET',      'desc': 'Target IP address'},
-    {'key': 'KALI',        'desc': 'Kali IP address'},
-    {'key': 'KALI_PORT',   'desc': 'Listener / HTTP server port'},
-    {'key': 'FILENAME',    'desc': 'File to transfer'},
-    {'key': 'USER',        'desc': 'Username on target'},
-    {'key': 'PASS',        'desc': 'Password on target'},
+    {'key': 'TARGET',       'desc': 'Target IP address'},
+    {'key': 'KALI',         'desc': 'Kali IP address'},
+    {'key': 'KALI_PORT',    'desc': 'Listener / HTTP server port'},
+    {'key': 'DOMAIN',       'desc': 'Domain name (e.g. corp.com)'},
+    {'key': 'USER',         'desc': 'Username on target'},
+    {'key': 'PASS',         'desc': 'Password on target'},
+    {'key': 'FILENAME',     'desc': 'File to transfer'},
+    {'key': 'PORTS',        'desc': 'Comma-separated open ports (for nmap)'},
+    {'key': 'PORT',         'desc': 'Single port (for service-specific commands)'},
+    {'key': 'SHARE',        'desc': 'SMB share name'},
 ]
 AD_VARS = [
-    {'key': 'DOMAIN',      'desc': 'AD domain name (e.g. corp.com)'},
-    {'key': 'DOMAIN_USER', 'desc': 'Domain username'},
-    {'key': 'DC_IP',       'desc': 'Domain controller IP'},
-    {'key': 'DOMAIN_SID',  'desc': 'Domain SID'},
-    {'key': 'KRBTGT_HASH', 'desc': 'krbtgt NTLM hash (post-root)'},
+    {'key': 'DC_IP',        'desc': 'Domain controller IP'},
+    {'key': 'DC_HOSTNAME',  'desc': 'DC hostname (e.g. DC01)'},
+    {'key': 'DC1',          'desc': 'First part of DC domain (e.g. corp)'},
+    {'key': 'DC2',          'desc': 'Second part of DC domain (e.g. com)'},
+    {'key': 'DOMAIN_SID',   'desc': 'Domain SID'},
+    {'key': 'NTLM_HASH',    'desc': 'NTLM hash'},
+    {'key': 'KRBTGT_HASH',  'desc': 'krbtgt NTLM hash (post-root)'},
 ]
 
-# ── Port → cheatsheet section mapping ─────────────────────────────────────────
-PORT_MAP = {
-    '21':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '21: FTP'},
-    '22':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '22: SSH'},
-    '23':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '23: Telnet'},
-    '25':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '25: SMTP'},
-    '53':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '53: DNS'},
-    '69':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '69: TFTP'},
-    '80':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '80/443: HTTP(S)'},
-    '88':        {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '88: Kerberos'},
-    '110':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '110: POP3'},
-    '111':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '111: RPC / Portmapper'},
-    '135':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '135, 593: MSRPC'},
-    '139':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '139, 445: SMB'},
-    '143':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '143, 993: IMAP'},
-    '161':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '161 (UDP): SNMP'},
-    '389':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '389, 636, 3268, 3269: LDAP'},
-    '443':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '80/443: HTTP(S)'},
-    '445':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '139, 445: SMB'},
-    '593':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '135, 593: MSRPC'},
-    '636':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '389, 636, 3268, 3269: LDAP'},
-    '993':       {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '143, 993: IMAP'},
-    '1433':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '1433: MSSQL'},
-    '2049':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '2049: NFS'},
-    '3268':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '389, 636, 3268, 3269: LDAP'},
-    '3269':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '389, 636, 3268, 3269: LDAP'},
-    '3306':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '3306: MySQL'},
-    '3389':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '3389: RDP'},
-    '5432':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '5432, 5433: PostgreSQL'},
-    '5433':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '5432, 5433: PostgreSQL'},
-    '5900':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '5900: VNC'},
-    '5985':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '5985, 5986: WinRM'},
-    '5986':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '5985, 5986: WinRM'},
-    '6379':      {'file': '01.info_gathering/Specific_Port_Services.md', 'heading': '6379: Redis'},
+# ── Port → command file mapping ───────────────────────────────────────────────
+# Maps open port numbers to .txt files in commands/
+PORT_FILE_MAP = {
+    '21':   'ftp.txt',
+    '22':   'ssh.txt',
+    '23':   'ssh.txt',      # telnet - use ssh.txt nc commands
+    '25':   'smtp.txt',
+    '53':   'dns.txt',
+    '69':   'ftp.txt',      # TFTP - basic file ops
+    '80':   'web.txt',
+    '88':   'kerberos.txt',
+    '110':  'smtp.txt',     # POP3 - grouped with mail
+    '111':  'rpc.txt',
+    '135':  'rpc.txt',
+    '139':  'smb.txt',
+    '143':  'smtp.txt',     # IMAP - grouped with mail
+    '161':  'snmp.txt',
+    '389':  'ldap.txt',
+    '443':  'web.txt',
+    '445':  'smb.txt',
+    '593':  'rpc.txt',
+    '636':  'ldap.txt',
+    '993':  'smtp.txt',
+    '1433': 'db.txt',
+    '2049': 'nfs.txt',
+    '3268': 'ldap.txt',
+    '3269': 'ldap.txt',
+    '3306': 'db.txt',
+    '3389': 'rdp.txt',
+    '5432': 'db.txt',
+    '5433': 'db.txt',
+    '5900': 'rdp.txt',      # VNC - similar connect pattern
+    '5985': 'winrm.txt',
+    '5986': 'winrm.txt',
+    '6379': 'db.txt',       # Redis
+    '8080': 'web.txt',
+    '8443': 'web.txt',
 }
 
+# ── OS plan: which files are always included, in order ───────────────────────
 OS_PLAN = {
     'linux': [
-        {'file': '07.Linux/linux_enumeration.md',                  'heading': None, 'label': 'Linux Enumeration'},
-        {'file': '07.Linux/Linux_Privilege_Escalation_Playbook.md','heading': None, 'label': 'Linux PrivEsc'},
+        {'file': 'recon.txt',         'label': 'Recon',         'phase': 'recon'},
+        {'file': 'linux_enum.txt',    'label': 'Linux Enum',    'phase': 'enum'},
+        {'file': 'linux_privesc.txt', 'label': 'Linux PrivEsc', 'phase': 'privesc'},
     ],
     'windows': [
-        {'file': '06.Windows/Basic_Enumeration.md',                'heading': None, 'label': 'Windows Enumeration'},
-        {'file': '06.Windows/Windows_Privilege_Escalation.md',     'heading': None, 'label': 'Windows PrivEsc'},
+        {'file': 'recon.txt',           'label': 'Recon',           'phase': 'recon'},
+        {'file': 'windows_enum.txt',    'label': 'Windows Enum',    'phase': 'enum'},
+        {'file': 'windows_privesc.txt', 'label': 'Windows PrivEsc', 'phase': 'privesc'},
     ],
     'ad': [
-        {'file': '06.Windows/Basic_Enumeration.md',                'heading': None, 'label': 'Windows Enumeration'},
-        {'file': '06.Windows/Windows_Privilege_Escalation.md',     'heading': None, 'label': 'Windows PrivEsc'},
-        {'file': '09.Active_Directory/Active_Directory_Enumeration.md', 'heading': None, 'label': 'AD Enumeration'},
-        {'file': '09.Active_Directory/Active_Directory_Attacks.md','heading': None, 'label': 'AD Attacks & Post-Root'},
+        {'file': 'recon.txt',           'label': 'Recon',           'phase': 'recon'},
+        {'file': 'windows_enum.txt',    'label': 'Windows Enum',    'phase': 'enum'},
+        {'file': 'windows_privesc.txt', 'label': 'Windows PrivEsc', 'phase': 'privesc'},
+        {'file': 'ad_enum.txt',         'label': 'AD Enum',         'phase': 'ad_enum'},
+        {'file': 'ad_attacks.txt',      'label': 'AD Attacks',      'phase': 'ad_attacks'},
     ],
 }
 
-# ── Markdown parser ────────────────────────────────────────────────────────────
-VAR_SUBS = [
-    (r'<ip>',           '{{TARGET}}'),
-    (r'<kali_ip>',      '{{KALI}}'),
-    (r'<kali_ip>',      '{{KALI}}'),
-    (r'KALI_IP',        '{{KALI}}'),
-    (r'<port>',         '{{KALI_PORT}}'),
-    (r'<kali_port>',    '{{KALI_PORT}}'),
-    (r'KALI_PORT',      '{{KALI_PORT}}'),
-    (r'<user>',         '{{USER}}'),
-    (r'<username>',     '{{USER}}'),
-    (r'<pass>',         '{{PASS}}'),
-    (r'<password>',     '{{PASS}}'),
-    (r'<domain>',       '{{DOMAIN}}'),
-    (r'<dc_ip>',        '{{DC_IP}}'),
-    (r'\[IP_ADDR\]',    '{{DC_IP}}'),
-    (r'\[attacker_ip\]','{{KALI}}'),
-]
-
-def apply_var_subs(cmd):
-    for pattern, replacement in VAR_SUBS:
-        cmd = re.sub(pattern, replacement, cmd, flags=re.IGNORECASE)
-    return cmd
-
-def extract_code_blocks(md_text, heading_filter=None):
+# ── Command file parser ───────────────────────────────────────────────────────
+def parse_command_file(filepath):
     """
-    Extract fenced code blocks from markdown.
-    If heading_filter is set, only extract blocks under that heading.
-    Returns list of {lang, code, context} dicts.
+    Parse a .txt command file into sections.
+    # === HEADING === lines → section headers
+    # comment lines → inline notes above next command
+    Blank lines → section separators
+    Returns: [{section, commands: [{cmd, comment}]}]
     """
-    blocks = []
-    lines  = md_text.splitlines()
-    current_heading = None
-    in_target       = heading_filter is None
-    in_fence        = False
-    fence_lang      = ''
-    fence_lines     = []
-    context_comment = None
+    sections         = []
+    current_section  = 'General'
+    current_commands = []
+    current_comment  = None
 
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        # Track headings
-        h = re.match(r'^#{1,4}\s+(.+)', line)
-        if h and not in_fence:
-            current_heading = h.group(1).strip()
-            if heading_filter:
-                in_target = current_heading.startswith(heading_filter.split(':')[0].strip())
-            i += 1
-            continue
-
-        if not in_target:
-            i += 1
-            continue
-
-        # Inline comment context (bold lines, > blockquotes before code)
-        if not in_fence:
-            stripped = line.strip()
-            if stripped.startswith('>') or stripped.startswith('**') or stripped.startswith('*'):
-                context_comment = stripped.lstrip('>#* ').rstrip('*')
-
-        # Fence open
-        if re.match(r'^```', line) and not in_fence:
-            fence_lang  = line.strip().lstrip('`').strip()
-            fence_lines = []
-            in_fence    = True
-            i += 1
-            continue
-
-        # Fence close
-        if re.match(r'^```', line) and in_fence:
-            in_fence = False
-            code = '\n'.join(fence_lines).strip()
-            if code:
-                blocks.append({
-                    'lang':    fence_lang or 'bash',
-                    'code':    code,
-                    'context': context_comment,
-                    'heading': current_heading or '',
-                })
-            context_comment = None
-            fence_lines = []
-            i += 1
-            continue
-
-        if in_fence:
-            fence_lines.append(line)
-        i += 1
-
-    return blocks
-
-
-def blocks_to_commands(blocks):
-    """
-    Convert code blocks into flat command list.
-    Each command gets its own entry with comment context.
-    """
-    cmds = []
-    for block in blocks:
-        raw_lines = block['code'].splitlines()
-        current_comment = block['context']
-        for line in raw_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            # Comment line inside code block
-            if stripped.startswith('#') or stripped.startswith('rem ') or stripped.startswith('--'):
-                current_comment = stripped.lstrip('#-rem ').strip()
-                continue
-            cmd = apply_var_subs(stripped)
-            cmds.append({
-                'cmd':     cmd,
-                'comment': current_comment,
-                'heading': block['heading'],
-                'lang':    block['lang'],
-            })
-            current_comment = None
-    return cmds
-
-
-def read_md_section(rel_path, heading_filter=None):
-    """Read a markdown file from the cheatsheet and extract commands."""
-    full_path = CHEATSHEET / rel_path
-    if not full_path.exists():
+    try:
+        lines = Path(filepath).read_text(errors='replace').splitlines()
+    except Exception:
         return []
-    text   = full_path.read_text(errors='replace')
-    blocks = extract_code_blocks(text, heading_filter)
-    return blocks_to_commands(blocks)
+
+    for line in lines:
+        stripped = line.strip()
+
+        if not stripped:
+            current_comment = None
+            continue
+
+        if stripped.startswith('#'):
+            inner = stripped.lstrip('#').strip()
+            if inner.startswith('===') and inner.endswith('==='):
+                # Flush section
+                if current_commands:
+                    sections.append({'section': current_section, 'commands': current_commands})
+                    current_commands = []
+                current_section = inner.strip('= ').strip()
+                current_comment = None
+            else:
+                current_comment = inner
+        else:
+            current_commands.append({'cmd': stripped, 'comment': current_comment})
+            current_comment = None
+
+    if current_commands:
+        sections.append({'section': current_section, 'commands': current_commands})
+
+    return sections
 
 
-def parse_nmap(nmap_text):
-    """Extract open port numbers from nmap output."""
-    ports = set()
-    for line in nmap_text.splitlines():
-        m = re.match(r'\s*(\d+)/(tcp|udp)\s+open', line, re.IGNORECASE)
-        if m:
-            ports.add(m.group(1))
-    return sorted(ports, key=int)
+def read_commands(filename):
+    """Read and parse a command file by name from COMMANDS_DIR."""
+    path = COMMANDS_DIR / filename
+    if not path.exists():
+        return []
+    return parse_command_file(path)
+
 
 # ── Git sync ──────────────────────────────────────────────────────────────────
 def git_pull():
-    """Run git pull on the cheatsheet repo and record changed files."""
     global git_status
     if not (CHEATSHEET / '.git').exists():
         git_status['error'] = f'Not a git repo: {CHEATSHEET}'
+        git_status['last_pull'] = time.strftime('%H:%M:%S')
         return
     with GIT_LOCK:
         try:
@@ -252,43 +180,37 @@ def git_pull():
             changed  = []
             new_cmds = []
 
-            if 'Already up to date' not in output:
-                # Get list of changed files
+            if 'Already up to date' not in output and result.returncode == 0:
                 diff = subprocess.run(
                     ['git', '-C', str(CHEATSHEET), 'diff', '--name-only', 'HEAD@{1}', 'HEAD'],
                     capture_output=True, text=True
                 )
-                changed = [f.strip() for f in diff.stdout.splitlines() if f.strip().endswith('.md')]
-
-                # For each changed md file, extract commands and flag as new
+                changed = [f.strip() for f in diff.stdout.splitlines() if f.strip()]
+                # Flag any command files in commands/ that are new
                 for f in changed:
-                    cmds = read_md_section(f)
-                    for c in cmds:
-                        new_cmds.append({'file': f, 'cmd': c['cmd'], 'comment': c['comment']})
+                    if f.endswith('.txt') and 'commands/' in f:
+                        new_cmds.append({'file': f})
 
             git_status = {
-                'last_pull':    time.strftime('%H:%M:%S'),
+                'last_pull':     time.strftime('%H:%M:%S'),
                 'changed_files': changed,
-                'new_cmds':     new_cmds,
-                'error':        None if result.returncode == 0 else output.strip(),
+                'new_cmds':      new_cmds,
+                'error':         None if result.returncode == 0 else output.strip(),
             }
         except Exception as e:
-            git_status['error'] = str(e)
-            git_status['last_pull'] = time.strftime('%H:%M:%S')
+            git_status['error']      = str(e)
+            git_status['last_pull']  = time.strftime('%H:%M:%S')
 
 
 # ── Screen helpers ────────────────────────────────────────────────────────────
 def get_screen_sessions():
     try:
         r = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
-        sessions = []
-        for line in r.stdout.splitlines():
-            m = re.search(r'(\d+\.\S+)', line)
-            if m:
-                sessions.append(m.group(1))
-        return sessions
+        return [re.search(r'(\d+\.\S+)', l).group(1)
+                for l in r.stdout.splitlines() if re.search(r'(\d+\.\S+)', l)]
     except Exception:
         return []
+
 
 def send_to_screen(session, command):
     try:
@@ -300,76 +222,83 @@ def send_to_screen(session, command):
     except Exception as e:
         return False, str(e)
 
+
 def substitute_vars(cmd, variables):
-    def rep(m):
-        return variables.get(m.group(1), m.group(0))
-    return re.sub(r'\{\{(\w+)\}\}', rep, cmd)
+    return re.sub(r'\{\{(\w+)\}\}', lambda m: variables.get(m.group(1), m.group(0)), cmd)
+
 
 # ── Box helpers ───────────────────────────────────────────────────────────────
 def default_variables(os_type):
-    vars_list = COMMON_VARS[:]
-    if os_type == 'ad':
-        vars_list += AD_VARS
-    return {v['key']: '' for v in vars_list}
+    schema = COMMON_VARS + (AD_VARS if os_type == 'ad' else [])
+    return {v['key']: '' for v in schema}
+
 
 def vars_schema(os_type):
-    schema = COMMON_VARS[:]
-    if os_type == 'ad':
-        schema += AD_VARS
-    return schema
+    return COMMON_VARS + (AD_VARS if os_type == 'ad' else [])
+
+
+def parse_nmap(text):
+    ports = set()
+    for line in text.splitlines():
+        m = re.match(r'\s*(\d+)/(tcp|udp)\s+open', line, re.IGNORECASE)
+        if m:
+            ports.add(m.group(1))
+    return sorted(ports, key=int)
+
 
 def build_plan(box):
     """
-    Build the full plan for a box as a list of sections:
-    [{ id, label, source, commands: [{cmd, comment, lang}] }]
+    Build plan sections for a box:
+    1. OS base files (recon → enum → privesc → ad if applicable)
+    2. Port-triggered files (deduplicated)
+    Returns [{id, label, phase, source, sections}]
     """
     os_type = box.get('os', 'linux')
-    ports   = box.get('ports', [])
+    ports   = [str(p) for p in box.get('ports', [])]
     plan    = []
 
-    # OS-based sections
+    # OS base sections
     for entry in OS_PLAN.get(os_type, []):
-        cmds = read_md_section(entry['file'], entry.get('heading'))
-        if cmds:
+        sections = read_commands(entry['file'])
+        if sections:
             plan.append({
-                'id':       entry['label'].lower().replace(' ', '_'),
+                'id':       entry['phase'],
                 'label':    entry['label'],
+                'phase':    entry['phase'],
                 'source':   entry['file'],
-                'commands': cmds,
+                'sections': sections,
             })
 
-    # Port-based sections — deduplicate headings already added
-    seen_headings = set()
+    # Port-triggered sections (deduplicate by filename)
+    seen_files = set()
     for port in ports:
-        port = str(port)
-        mapping = PORT_MAP.get(port)
-        if not mapping:
+        fname = PORT_FILE_MAP.get(port)
+        if not fname or fname in seen_files:
             continue
-        key = mapping['heading']
-        if key in seen_headings:
-            continue
-        seen_headings.add(key)
-        cmds = read_md_section(mapping['file'], mapping['heading'])
-        if cmds:
+        seen_files.add(fname)
+        sections = read_commands(fname)
+        if sections:
+            label = fname.replace('.txt', '').upper()
             plan.append({
-                'id':       f"port_{port}",
-                'label':    mapping['heading'],
-                'source':   mapping['file'],
-                'commands': cmds,
+                'id':       f'port_{fname.replace(".txt","")}',
+                'label':    f'Port {port} — {label}',
+                'phase':    'port',
+                'source':   fname,
+                'sections': sections,
             })
 
     return plan
 
+
 # ── API ───────────────────────────────────────────────────────────────────────
 
-@app.route('/api/init', methods=['GET'])
+@app.route('/api/init')
 def api_init():
-    """Called on page load — triggers git pull, returns current state."""
     threading.Thread(target=git_pull, daemon=True).start()
     return jsonify({'boxes': list(boxes.values()), 'git': git_status})
 
 
-@app.route('/api/git', methods=['GET'])
+@app.route('/api/git')
 def api_git():
     return jsonify(git_status)
 
@@ -380,7 +309,7 @@ def api_git_pull():
     return jsonify(git_status)
 
 
-@app.route('/api/boxes', methods=['GET'])
+@app.route('/api/boxes')
 def api_boxes():
     return jsonify({'boxes': list(boxes.values())})
 
@@ -391,7 +320,6 @@ def api_create_box():
     name    = data.get('name', '').strip()
     os_type = data.get('os', 'linux').lower()
     session = data.get('session', '').strip()
-
     if not name:
         return jsonify({'error': 'Name required'}), 400
     if os_type not in ('linux', 'windows', 'ad'):
@@ -417,24 +345,20 @@ def api_create_box():
 @app.route('/api/boxes/<box_id>', methods=['GET'])
 def api_get_box(box_id):
     box = boxes.get(box_id)
-    if not box:
-        return jsonify({'error': 'Box not found'}), 404
-    return jsonify({'box': box})
+    return jsonify({'box': box}) if box else (jsonify({'error': 'Not found'}), 404)
 
 
 @app.route('/api/boxes/<box_id>', methods=['PATCH'])
 def api_update_box(box_id):
     box = boxes.get(box_id)
     if not box:
-        return jsonify({'error': 'Box not found'}), 404
+        return jsonify({'error': 'Not found'}), 404
     data = request.json or {}
-    for field in ('name', 'os', 'session', 'nmap_raw'):
+    for field in ('name', 'os', 'session', 'nmap_raw', 'ports'):
         if field in data:
             box[field] = data[field]
     if 'variables' in data:
         box['variables'].update(data['variables'])
-    if 'ports' in data:
-        box['ports'] = data['ports']
     if 'done_cmds' in data:
         box['done_cmds'] = data['done_cmds']
     return jsonify({'box': box})
@@ -444,68 +368,59 @@ def api_update_box(box_id):
 def api_parse_nmap(box_id):
     box = boxes.get(box_id)
     if not box:
-        return jsonify({'error': 'Box not found'}), 404
+        return jsonify({'error': 'Not found'}), 404
     nmap_text = (request.json or {}).get('nmap', '')
-    ports     = parse_nmap(nmap_text)
-    box['nmap_raw'] = nmap_text
-    # Merge with any manually added ports
+    new_ports = parse_nmap(nmap_text)
     existing  = set(str(p) for p in box['ports'])
-    for p in ports:
-        existing.add(str(p))
-    box['ports'] = sorted(existing, key=lambda x: int(x))
+    for p in new_ports:
+        existing.add(p)
+    box['ports']    = sorted(existing, key=lambda x: int(x))
+    box['nmap_raw'] = nmap_text
     return jsonify({'ports': box['ports']})
 
 
-@app.route('/api/boxes/<box_id>/plan', methods=['GET'])
+@app.route('/api/boxes/<box_id>/plan')
 def api_plan(box_id):
     box = boxes.get(box_id)
     if not box:
-        return jsonify({'error': 'Box not found'}), 404
-    plan = build_plan(box)
-    return jsonify({'plan': plan, 'done_cmds': box['done_cmds']})
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'plan': build_plan(box), 'done_cmds': box['done_cmds']})
 
 
 @app.route('/api/boxes/<box_id>/run', methods=['POST'])
 def api_run(box_id):
     box = boxes.get(box_id)
     if not box:
-        return jsonify({'error': 'Box not found'}), 404
-
+        return jsonify({'error': 'Not found'}), 404
     data    = request.json or {}
     raw_cmd = data.get('command', '').strip()
     cmd_key = data.get('cmd_key', '')
     session = box.get('session') or data.get('session', '')
-
     if not session:
-        return jsonify({'error': 'No screen session assigned to this box'}), 400
+        return jsonify({'error': 'No screen session assigned'}), 400
     if not raw_cmd:
         return jsonify({'error': 'No command'}), 400
-
-    final_cmd = substitute_vars(raw_cmd, box['variables'])
-    ok, err   = send_to_screen(session, final_cmd)
-
+    final = substitute_vars(raw_cmd, box['variables'])
+    ok, err = send_to_screen(session, final)
     if ok and cmd_key and cmd_key not in box['done_cmds']:
         box['done_cmds'].append(cmd_key)
-
-    if ok:
-        return jsonify({'status': 'ok', 'sent': final_cmd})
-    return jsonify({'error': err, 'sent': final_cmd}), 500
+    return jsonify({'status': 'ok', 'sent': final}) if ok else (jsonify({'error': err, 'sent': final}), 500)
 
 
 @app.route('/api/boxes/<box_id>/done', methods=['POST'])
 def api_toggle_done(box_id):
     box = boxes.get(box_id)
     if not box:
-        return jsonify({'error': 'Box not found'}), 404
-    cmd_key = (request.json or {}).get('cmd_key', '')
-    if cmd_key in box['done_cmds']:
-        box['done_cmds'].remove(cmd_key)
+        return jsonify({'error': 'Not found'}), 404
+    key = (request.json or {}).get('cmd_key', '')
+    if key in box['done_cmds']:
+        box['done_cmds'].remove(key)
     else:
-        box['done_cmds'].append(cmd_key)
+        box['done_cmds'].append(key)
     return jsonify({'done_cmds': box['done_cmds']})
 
 
-@app.route('/api/sessions', methods=['GET'])
+@app.route('/api/sessions')
 def api_sessions():
     return jsonify({'sessions': get_screen_sessions()})
 
@@ -522,12 +437,11 @@ def api_create_session():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/vars_schema/<os_type>', methods=['GET'])
+@app.route('/api/vars_schema/<os_type>')
 def api_vars_schema(os_type):
     return jsonify({'schema': vars_schema(os_type)})
 
 
-# ── Static serving — everything from BASE_DIR ─────────────────────────────────
 @app.route('/')
 def serve_index():
     idx = BASE_DIR / 'index.html'
@@ -538,8 +452,7 @@ def serve_index():
 
 if __name__ == '__main__':
     print(f'[*] OSCP Commander on http://localhost:50000')
-    print(f'[*] Script dir:    {BASE_DIR}')
+    print(f'[*] Commands dir:  {COMMANDS_DIR}')
     print(f'[*] Cheatsheet:    {CHEATSHEET}')
-    # Kick off initial git pull in background
     threading.Thread(target=git_pull, daemon=True).start()
     app.run(host='0.0.0.0', port=50000, debug=False)
