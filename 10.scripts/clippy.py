@@ -54,15 +54,8 @@ def timestamp():
 
 
 def main():
-    print("=" * 70)
-    print(" Clipboard Monitor")
-    print("=" * 70)
-    print("Watching:")
     print("  • CLIPBOARD (Ctrl+C / Ctrl+V)")
     print("  • PRIMARY   (mouse selection / middle-click paste)")
-    print()
-    print("Press Ctrl+C to quit.")
-    print("=" * 70)
 
     last_clipboard = None
     last_primary = None
