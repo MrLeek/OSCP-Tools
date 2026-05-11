@@ -1,0 +1,47 @@
+# === PHASE 1: QUICK WINS ===
+# Run WinPEAS first
+.\winPEAS.exe
+# Check current privileges
+whoami /all
+# AlwaysInstallElevated check
+reg query HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
+reg query HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
+
+# === PHASE 2: SYSTEM CONTEXT ===
+# OS version
+systeminfo | findstr /B /C:"OS Name" /C:"OS Version" /C:"System Type"
+# Hostname and domain
+hostname && whoami /all
+# Local users and groups
+net user
+net localgroup administrators
+
+# === PHASE 3: SERVICES ===
+# All running services
+sc query type= all state= all
+# Unquoted service paths
+wmic service get name,displayname,pathname,startmode | findstr /i /v "C:\Windows\\" | findstr /i /v """
+# Writable service directories (check output manually)
+accesschk.exe -uwcqv * /accepteula
+
+# === PHASE 4: NETWORK ===
+# Listening ports
+netstat -ano
+# Routing table — dual-homed?
+route print
+# Hosts file
+type C:\Windows\System32\drivers\etc\hosts
+
+# === PHASE 5: CREDENTIAL HUNTING ===
+# Search for passwords in files
+findstr /si password *.txt *.ini *.config *.xml
+# Registry credential search
+reg query HKLM /f password /t REG_SZ /s
+reg query HKCU /f password /t REG_SZ /s
+# Unattend files
+dir /s /b C:\*unattend* C:\*sysprep* 2>nul
+
+# === PHASE 6: SCHEDULED TASKS ===
+# List all scheduled tasks
+schtasks /query /fo LIST /v
+# Filesystem check for writable task binaries — manual after above

