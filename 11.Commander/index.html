@@ -870,13 +870,12 @@ function renderSection(boxId, sectionId) {
 
 // ── Command ops ────────────────────────────────────────────────────────────
 function toggleEditMode(row, rawCmd, vars, boxId, cmdKey) {
-  const body = row.querySelector('.cbody');
-  const txt  = row.querySelector('.ctxt');
-  const runB = row.querySelector('.crun');
+  const body     = row.querySelector('.cbody');
+  const txt      = row.querySelector('.ctxt');
+  const runB     = row.querySelector('.crun');
   const existing = row.querySelector('.cedit');
 
   if (existing) {
-    // Already in edit mode - cancel
     existing.remove();
     txt.style.display = '';
     runB.textContent  = '▶';
@@ -885,27 +884,28 @@ function toggleEditMode(row, rawCmd, vars, boxId, cmdKey) {
     return;
   }
 
-  // Enter edit mode
   txt.style.display = 'none';
-  const subbed = rawCmd.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || `{{${k}}}`);
+  const subbed = rawCmd.replace(/\{\{(\w+)\}\}/g, function(m, k) { return vars[k] || m; });
   const inp = document.createElement('textarea');
   inp.className = 'cedit';
   inp.value = subbed;
-  inp.rows  = Math.max(2, subbed.split('
-').length);
-  inp.style.cssText = 'width:100%;background:var(--bg4);border:1px solid var(--yellow);color:var(--text);font-family:inherit;font-size:12px;padding:4px 6px;border-radius:3px;resize:vertical;outline:none;';
-  inp.onclick = e => e.stopPropagation();
+  inp.rows  = Math.max(2, subbed.split('\n').length);
+  inp.style.cssText = [
+    'width:100%', 'background:var(--bg4)', 'border:1px solid var(--yellow)',
+    'color:var(--text)', 'font-family:inherit', 'font-size:12px',
+    'padding:4px 6px', 'border-radius:3px', 'resize:vertical', 'outline:none'
+  ].join(';');
+  inp.onclick  = e => e.stopPropagation();
   inp.onkeydown = e => {
-    if (e.altKey && e.key === 'Enter') { e.preventDefault(); runEditedCmd(row, inp.value, boxId, cmdKey, rawCmd); }
-    if (e.key === 'Escape') toggleEditMode(row, rawCmd, vars, boxId, cmdKey);
+    if (e.altKey && e.key === 'Enter') { e.preventDefault(); runEditedCmd(row, inp.value, boxId, cmdKey); }
+    if (e.key === 'Escape') { toggleEditMode(row, rawCmd, vars, boxId, cmdKey); }
   };
   body.appendChild(inp);
   inp.focus();
 
-  // Change run button to send-edited
   runB.textContent = '▶✎';
-  runB.title = 'Send edited version';
-  runB.onclick = e => { e.stopPropagation(); runEditedCmd(row, inp.value, boxId, cmdKey, rawCmd); };
+  runB.title = 'Send edited version (Alt+Enter)';
+  runB.onclick = e => { e.stopPropagation(); runEditedCmd(row, inp.value, boxId, cmdKey); };
 }
 
 async function runEditedCmd(row, editedCmd, boxId, cmdKey, originalCmd) {
