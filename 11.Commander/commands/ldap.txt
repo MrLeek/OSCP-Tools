@@ -4,24 +4,24 @@ nmap -sV -n --script "ldap* and not brute" {{TARGET}}
 # === ANONYMOUS ENUMERATION ===
 ldapsearch -x -H ldap://{{TARGET}}
 ldapsearch -x -H ldap://{{TARGET}} -s base namingcontexts
-ldapsearch -x -H ldap://{{TARGET}} -b "DC={{DC1}},DC={{DC2}}"
-ldapsearch -v -x -b "DC={{DC1}},DC={{DC2}}" -H "ldap://{{TARGET}}" "(objectclass=*)"
+ldapsearch -x -H ldap://{{TARGET}} -b "{{BASE_DN}}"
+ldapsearch -v -x -b "{{BASE_DN}}" -H "ldap://{{TARGET}}" "(objectclass=*)"
 
 # === AUTHENTICATED ENUMERATION ===
-ldapsearch -x -H ldap://{{TARGET}} -b "DC={{DC1}},DC={{DC2}}" -D "{{DOMAIN}}\{{USER}}" -w {{PASS}} "(objectclass=user)"
-ldapsearch -h {{TARGET}} -x -D '{{DOMAIN}}\{{USER}}' -w '{{PASS}}' -b "DC={{DC1}},DC={{DC2}}"
+ldapsearch -x -H ldap://{{TARGET}} -b "{{BASE_DN}}" -D "{{DOMAIN}}\{{USER}}" -w {{PASS}} "(objectclass=user)"
+ldapsearch -h {{TARGET}} -x -D '{{DOMAIN}}\{{USER}}' -w '{{PASS}}' -b "{{BASE_DN}}"
 
 # === TARGETED QUERIES ===
 # All users
-ldapsearch -x -H ldap://{{TARGET}} -b "DC={{DC1}},DC={{DC2}}" "(objectClass=user)" | grep userPrincipalName
+ldapsearch -x -H ldap://{{TARGET}} -b "{{BASE_DN}}" "(objectClass=user)" | grep userPrincipalName
 # Kerberoastable (have SPN)
-ldapsearch -x -H ldap://{{TARGET}} -b "DC={{DC1}},DC={{DC2}}" "(servicePrincipalName=*)"
+ldapsearch -x -H ldap://{{TARGET}} -b "{{BASE_DN}}" "(servicePrincipalName=*)"
 # AS-REP roastable (pre-auth disabled)
-ldapsearch -x -H ldap://{{TARGET}} -b "DC={{DC1}},DC={{DC2}}" "(userAccountControl:1.2.840.113556.1.4.803:=4194304)"
+ldapsearch -x -H ldap://{{TARGET}} -b "{{BASE_DN}}" "(userAccountControl:1.2.840.113556.1.4.803:=4194304)"
 # Password in description
-ldapsearch -x -H ldap://{{TARGET}} -b "DC={{DC1}},DC={{DC2}}" "(description=*password*)"
+ldapsearch -x -H ldap://{{TARGET}} -b "{{BASE_DN}}" "(description=*password*)"
 # Domain admins
-ldapsearch -x -H ldap://{{TARGET}} -b "DC={{DC1}},DC={{DC2}}" "(memberOf=CN=Domain Admins,CN=Users,DC={{DC1}},DC={{DC2}})"
+ldapsearch -x -H ldap://{{TARGET}} -b "{{BASE_DN}}" "(memberOf=CN=Domain Admins,CN=Users,{{BASE_DN}})"
 
 # === KERBRUTE USER ENUMERATION ===
 kerbrute userenum -d {{DOMAIN}} --dc {{TARGET}} /usr/share/seclists/Usernames/xato-net-10-million-usernames.txt

