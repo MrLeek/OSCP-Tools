@@ -206,6 +206,7 @@ kbd{background:var(--bg3);border:1px solid var(--border);border-radius:2px;paddi
 
 <div class="hint">
   <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> send</span>
+  <span><kbd>Ctrl</kbd>+<kbd>↓</kbd><kbd>↑</kbd> navigate</span>
   <span><kbd>C</kbd> copy · <kbd>D</kbd> done</span>
 </div>
 
@@ -856,6 +857,10 @@ function renderSection(boxId, sectionId) {
   });
 
   col.appendChild(cmds);
+
+  // Auto-focus first command in section
+  const allRows = cmds.querySelectorAll('.crow');
+  if (allRows.length) allRows[0].focus();
 }
 
 // ── Command ops ────────────────────────────────────────────────────────────
@@ -947,12 +952,52 @@ async function createBox() {
 }
 
 document.addEventListener('keydown', e => {
+  // Modal shortcuts
   if (e.key === 'Escape') {
     document.querySelectorAll('.mbg.open').forEach(m => m.classList.remove('open'));
     if (utilsOpen) toggleUtils();
   }
   if (e.key === 'Enter' && document.getElementById('mbox').classList.contains('open')) createBox();
   if (e.key === 'Enter' && document.getElementById('msess').classList.contains('open')) createSession();
+
+  // Command navigation — only when Ctrl is held and focus is in the plan area
+  if (!e.ctrlKey) return;
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
+
+  const focused = document.activeElement;
+  const isCrow  = focused && focused.classList.contains('crow');
+  const allRows = Array.from(document.querySelectorAll('#plan-col .crow'));
+  if (!allRows.length) return;
+
+  if (e.key === 'Enter') {
+    // Run whichever row is focused
+    if (isCrow) {
+      e.preventDefault();
+      focused.querySelector('.crun')?.click();
+    }
+    return;
+  }
+
+  e.preventDefault(); // stop page scrolling
+
+  if (e.key === 'ArrowDown') {
+    if (!isCrow) {
+      // Nothing focused yet — go to first row
+      allRows[0].focus(); allRows[0].scrollIntoView({block:'nearest'});
+    } else {
+      const idx = allRows.indexOf(focused);
+      if (idx < allRows.length - 1) { allRows[idx + 1].focus(); allRows[idx + 1].scrollIntoView({block:'nearest'}); }
+    }
+  }
+
+  if (e.key === 'ArrowUp') {
+    if (!isCrow) {
+      allRows[allRows.length - 1].focus();
+    } else {
+      const idx = allRows.indexOf(focused);
+      if (idx > 0) { allRows[idx - 1].focus(); allRows[idx - 1].scrollIntoView({block:'nearest'}); }
+    }
+  }
 });
 
 // ── API ────────────────────────────────────────────────────────────────────
