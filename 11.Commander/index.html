@@ -205,8 +205,8 @@ kbd{background:var(--bg3);border:1px solid var(--border);border-radius:2px;paddi
 </div>
 
 <div class="hint">
-  <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> send</span>
-  <span><kbd>Ctrl</kbd>+<kbd>↓</kbd><kbd>↑</kbd> navigate</span>
+  <span><kbd>Alt</kbd>+<kbd>Enter</kbd> send</span>
+  <span><kbd>Alt</kbd>+<kbd>↓</kbd><kbd>↑</kbd> navigate</span>
   <span><kbd>C</kbd> copy · <kbd>D</kbd> done</span>
 </div>
 
@@ -847,7 +847,7 @@ function renderSection(boxId, sectionId) {
       row.appendChild(runB); row.appendChild(body); row.appendChild(acts);
 
       row.addEventListener('keydown', e => {
-        if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runCmd(boxId, key, cmd.cmd); }
+        if (e.altKey && e.key === 'Enter') { e.preventDefault(); runCmd(boxId, key, cmd.cmd); }
         if (e.key === 'c' && !e.ctrlKey) copyCmd(cmd.cmd, vars);
         if (e.key === 'd' && !e.ctrlKey) toggleDone(boxId, key, sectionId);
       });
@@ -961,7 +961,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('msess').classList.contains('open')) createSession();
 
   // Command navigation — only when Ctrl is held and focus is in the plan area
-  if (!e.ctrlKey) return;
+  if (!e.altKey) return;
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
 
   const focused = document.activeElement;
