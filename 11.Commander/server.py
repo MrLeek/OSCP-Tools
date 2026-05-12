@@ -124,24 +124,24 @@ FOOTHOLD_TRIGGERS = {
 # ── OS plan definition ────────────────────────────────────────────────────────
 OS_PLAN = {
     'linux': [
-        {'file': 'recon.txt',         'label': 'Recon',      'phase': 'recon'},
-        {'file': 'foothold.txt',      'label': 'Foothold',   'phase': 'foothold'},
-        {'file': 'linux_enum.txt',    'label': 'Lin Enum',   'phase': 'enum'},
-        {'file': 'linux_privesc.txt', 'label': 'PrivEsc',    'phase': 'privesc'},
+        {'file': 'recon.txt',            'label': 'Recon',      'phase': 'recon'},
+        {'file': 'foothold_linux.txt',   'label': 'Foothold',   'phase': 'foothold'},
+        {'file': 'linux_enum.txt',       'label': 'Lin Enum',   'phase': 'enum'},
+        {'file': 'linux_privesc.txt',    'label': 'PrivEsc',    'phase': 'privesc'},
     ],
     'windows': [
-        {'file': 'recon.txt',           'label': 'Recon',    'phase': 'recon'},
-        {'file': 'foothold.txt',        'label': 'Foothold', 'phase': 'foothold'},
-        {'file': 'windows_enum.txt',    'label': 'Win Enum', 'phase': 'enum'},
-        {'file': 'windows_privesc.txt', 'label': 'PrivEsc',  'phase': 'privesc'},
+        {'file': 'recon.txt',            'label': 'Recon',      'phase': 'recon'},
+        {'file': 'foothold_windows.txt', 'label': 'Foothold',   'phase': 'foothold'},
+        {'file': 'windows_enum.txt',     'label': 'Win Enum',   'phase': 'enum'},
+        {'file': 'windows_privesc.txt',  'label': 'PrivEsc',    'phase': 'privesc'},
     ],
     'ad': [
-        {'file': 'recon.txt',           'label': 'Recon',    'phase': 'recon'},
-        {'file': 'foothold.txt',        'label': 'Foothold', 'phase': 'foothold'},
-        {'file': 'windows_enum.txt',    'label': 'Win Enum', 'phase': 'enum'},
-        {'file': 'windows_privesc.txt', 'label': 'PrivEsc',  'phase': 'privesc'},
-        {'file': 'ad_enum.txt',         'label': 'AD Enum',  'phase': 'ad_enum'},
-        {'file': 'ad_attacks.txt',      'label': 'AD Atk',   'phase': 'ad_attacks'},
+        {'file': 'recon.txt',            'label': 'Recon',      'phase': 'recon'},
+        {'file': 'foothold_windows.txt', 'label': 'Foothold',   'phase': 'foothold'},
+        {'file': 'windows_enum.txt',     'label': 'Win Enum',   'phase': 'enum'},
+        {'file': 'windows_privesc.txt',  'label': 'PrivEsc',    'phase': 'privesc'},
+        {'file': 'ad_enum.txt',          'label': 'AD Enum',    'phase': 'ad_enum'},
+        {'file': 'ad_attacks.txt',       'label': 'AD Atk',     'phase': 'ad_attacks'},
     ],
 }
 
@@ -214,12 +214,9 @@ def build_plan(box):
         phase = entry['phase']
 
         if phase == 'recon':
-            # Recon first
+            # Standard recon sections
             secs = read_cmd(entry['file'])
-            if secs:
-                plan.append({'id': 'recon', 'label': 'Recon',
-                             'phase': 'recon', 'sections': secs})
-            # Port-specific tabs immediately after recon
+            # Port-specific sections appended to recon with a divider marker
             seen = set()
             for port in open_ports:
                 mapping = PORT_FILE_MAP.get(port)
@@ -230,13 +227,13 @@ def build_plan(box):
                     continue
                 seen.add(fname)
                 psecs = read_cmd(fname)
-                if psecs:
-                    plan.append({
-                        'id':       f'port_{fname.replace(".txt","")}',
-                        'label':    label,
-                        'phase':    'port',
-                        'sections': psecs,
-                    })
+                for ps in psecs:
+                    # Tag each section so the frontend can render the divider
+                    ps['port_label'] = label
+                    secs.append(ps)
+            if secs:
+                plan.append({'id': 'recon', 'label': 'Recon',
+                             'phase': 'recon', 'sections': secs})
 
         elif phase == 'foothold':
             all_secs = read_cmd(entry['file'])
@@ -496,3 +493,4 @@ if __name__ == '__main__':
     print(f'[*] Cheatsheet:    {CHEATSHEET}')
     threading.Thread(target=git_pull, daemon=True).start()
     app.run(host='127.0.0.1', port=50000, debug=False)
+    
