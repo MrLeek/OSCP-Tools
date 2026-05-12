@@ -36,15 +36,13 @@ COMMON_VARS = [
     {'key': 'PASS',        'desc': 'Password on target'},
     {'key': 'FILENAME',    'desc': 'File to transfer'},
     {'key': 'PORTS',       'desc': 'Open ports for nmap (comma-separated)'},
-    {'key': 'PORT',        'desc': 'Single service port'},
     {'key': 'SHARE',       'desc': 'SMB share name'},
     {'key': 'KEY_FILE',    'desc': 'SSH private key path'},
 ]
 AD_VARS = [
     {'key': 'DC_IP',       'desc': 'Domain controller IP'},
     {'key': 'DC_HOSTNAME', 'desc': 'DC hostname (e.g. DC01)'},
-    {'key': 'DC1',         'desc': 'First DC label (e.g. corp)'},
-    {'key': 'DC2',         'desc': 'Second DC label (e.g. com)'},
+    {'key': 'BASE_DN',     'desc': 'LDAP base DN (e.g. DC=corp,DC=com)'},
     {'key': 'DOMAIN_SID',  'desc': 'Domain SID'},
     {'key': 'NTLM_HASH',   'desc': 'NTLM hash'},
     {'key': 'KRBTGT_HASH', 'desc': 'krbtgt NTLM hash (post-root)'},
@@ -280,27 +278,30 @@ def git_pull():
                           'changed_files': [], 'new_cmds': [], 'error': str(e)}
 
 
-# ── Screen helpers ────────────────────────────────────────────────────────────
+# ── Tmux helpers ──────────────────────────────────────────────────────────────
 def get_screen_sessions():
+    """List active tmux sessions by name."""
     try:
-        r = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
-        sessions = []
-        for line in r.stdout.splitlines():
-            # Only match genuine session lines: PID.name (timestamp) (Detached|Attached)
-            m = re.search(r'(\d+\.\S+)\s+\([^)]+\)\s+\((Detached|Attached)\)', line)
-            if m:
-                sessions.append(m.group(1))
-        return sessions
+        r = subprocess.run(
+            ['tmux', 'list-sessions', '-F', '#{session_name}'],
+            capture_output=True, text=True)
+        if r.returncode != 0:
+            return []
+        return [s.strip() for s in r.stdout.splitlines() if s.strip()]
     except Exception:
         return []
 
 
 def send_to_screen(session, command):
+    """Send command to a named tmux session."""
     try:
         r = subprocess.run(
-            ['screen', '-S', session, '-X', 'stuff', command + '\n'],
+            ['tmux', 'send-keys', '-t', session, command, 'Enter'],
             capture_output=True, text=True)
-        return r.returncode == 0, r.stderr
+        if r.returncode != 0:
+            err = r.stderr.strip() or f"tmux: session '{session}' not found"
+            return False, err
+        return True, None
     except Exception as e:
         return False, str(e)
 
@@ -429,7 +430,8 @@ def api_run(box_id):
     if not raw_cmd:
         return jsonify({'error': 'No command'}), 400
     all_vars = {**box['variables'], **box.get('custom_vars', {})}
-    final    = substitute_vars(raw_cmd, all_vars)
+    # pre_substituted means the user already edited the command — send as-is
+    final = raw_cmd if data.get('pre_substituted') else substitute_vars(raw_cmd, all_vars)
     ok, err  = send_to_screen(session, final)
     if ok and cmd_key and cmd_key not in box['done_cmds']:
         box['done_cmds'].append(cmd_key)
@@ -461,7 +463,8 @@ def api_create_session():
     if not name or not re.match(r'^[a-zA-Z0-9_\-]+$', name):
         return jsonify({'error': 'Invalid session name'}), 400
     try:
-        subprocess.Popen(['screen', '-dmS', name])
+        subprocess.run(['tmux', 'new-session', '-d', '-s', name],
+                       capture_output=True, text=True)
         return jsonify({'status': 'ok', 'name': name})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -493,4 +496,3 @@ if __name__ == '__main__':
     print(f'[*] Cheatsheet:    {CHEATSHEET}')
     threading.Thread(target=git_pull, daemon=True).start()
     app.run(host='127.0.0.1', port=50000, debug=False)
-    

@@ -207,7 +207,7 @@ kbd{background:var(--bg3);border:1px solid var(--border);border-radius:2px;paddi
 <div class="hint">
   <span><kbd>Alt</kbd>+<kbd>Enter</kbd> send</span>
   <span><kbd>Alt</kbd>+<kbd>↓</kbd><kbd>↑</kbd> navigate</span>
-  <span><kbd>C</kbd> copy · <kbd>D</kbd> done</span>
+  <span><kbd>C</kbd> copy · <kbd>D</kbd> done · <kbd>✎</kbd> edit</span>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -568,9 +568,10 @@ function onVarInput(boxId, inp) {
   clearTimeout(inp._t);
   inp._t = setTimeout(() => {
     api('PATCH', `/api/boxes/${boxId}`, { variables: box.variables, custom_vars: box.custom_vars });
-    if (curTab) renderSection(boxId, curTab);
+    // Re-render variable highlighting in commands without stealing focus
+    refreshVarHighlights(boxId);
     if (utilsOpen) renderUtils(boxId);
-  }, 400);
+  }, 800);
 }
 
 async function onSessChange(boxId, sess) {
@@ -718,6 +719,7 @@ function renderUtils(boxId) {
     (sec.commands || []).forEach((cmd, i) => {
       const row = document.createElement('div'); row.className = 'utils-row';
       const txt = document.createElement('div'); txt.className = 'utils-txt';
+      txt.dataset.raw = cmd.cmd;
       txt.innerHTML = renderVars(cmd.cmd, vars);
       const cp  = document.createElement('button'); cp.className = 'utils-cp'; cp.textContent = '⎘';
       cp.title = 'Copy'; cp.onclick = () => copyCmd(cmd.cmd, vars);
@@ -835,14 +837,17 @@ function renderSection(boxId, sectionId) {
         c.textContent = '# ' + cmd.comment; body.appendChild(c);
       }
       const txt = document.createElement('div'); txt.className = 'ctxt';
+      txt.dataset.raw = cmd.cmd;
       txt.innerHTML = renderVars(cmd.cmd, vars); body.appendChild(txt);
 
       const acts = document.createElement('div'); acts.className = 'cacts';
       const cpB  = document.createElement('button'); cpB.className = 'cbtn'; cpB.textContent = '⎘'; cpB.title = 'Copy (C)';
       cpB.onclick = e => { e.stopPropagation(); copyCmd(cmd.cmd, vars); };
+      const edB  = document.createElement('button'); edB.className = 'cbtn'; edB.textContent = '✎'; edB.title = 'Edit command (one-time)';
+      edB.onclick = e => { e.stopPropagation(); toggleEditMode(row, cmd.cmd, vars, boxId, key); };
       const dnB  = document.createElement('button'); dnB.className = 'cbtn'; dnB.textContent = isDone ? '↺' : '✓'; dnB.title = 'Toggle done (D)';
       dnB.onclick = e => { e.stopPropagation(); toggleDone(boxId, key, sectionId); };
-      acts.appendChild(cpB); acts.appendChild(dnB);
+      acts.appendChild(cpB); acts.appendChild(edB); acts.appendChild(dnB);
 
       row.appendChild(runB); row.appendChild(body); row.appendChild(acts);
 
@@ -864,6 +869,68 @@ function renderSection(boxId, sectionId) {
 }
 
 // ── Command ops ────────────────────────────────────────────────────────────
+function toggleEditMode(row, rawCmd, vars, boxId, cmdKey) {
+  const body = row.querySelector('.cbody');
+  const txt  = row.querySelector('.ctxt');
+  const runB = row.querySelector('.crun');
+  const existing = row.querySelector('.cedit');
+
+  if (existing) {
+    // Already in edit mode - cancel
+    existing.remove();
+    txt.style.display = '';
+    runB.textContent  = '▶';
+    runB.title = 'Send';
+    runB.onclick = e => { e.stopPropagation(); runCmd(boxId, cmdKey, rawCmd); };
+    return;
+  }
+
+  // Enter edit mode
+  txt.style.display = 'none';
+  const subbed = rawCmd.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || `{{${k}}}`);
+  const inp = document.createElement('textarea');
+  inp.className = 'cedit';
+  inp.value = subbed;
+  inp.rows  = Math.max(2, subbed.split('
+').length);
+  inp.style.cssText = 'width:100%;background:var(--bg4);border:1px solid var(--yellow);color:var(--text);font-family:inherit;font-size:12px;padding:4px 6px;border-radius:3px;resize:vertical;outline:none;';
+  inp.onclick = e => e.stopPropagation();
+  inp.onkeydown = e => {
+    if (e.altKey && e.key === 'Enter') { e.preventDefault(); runEditedCmd(row, inp.value, boxId, cmdKey, rawCmd); }
+    if (e.key === 'Escape') toggleEditMode(row, rawCmd, vars, boxId, cmdKey);
+  };
+  body.appendChild(inp);
+  inp.focus();
+
+  // Change run button to send-edited
+  runB.textContent = '▶✎';
+  runB.title = 'Send edited version';
+  runB.onclick = e => { e.stopPropagation(); runEditedCmd(row, inp.value, boxId, cmdKey, rawCmd); };
+}
+
+async function runEditedCmd(row, editedCmd, boxId, cmdKey, originalCmd) {
+  const box = boxes[boxId];
+  if (!box?.session) { toast('No screen session assigned', 'err'); return; }
+  // Send the edited command directly (no var substitution - user already edited)
+  const r = await api('POST', `/api/boxes/${boxId}/run`, {
+    command: editedCmd, cmd_key: cmdKey, pre_substituted: true
+  });
+  if (r.status === 'ok') {
+    if (!boxes[boxId].done_cmds.includes(cmdKey)) boxes[boxId].done_cmds.push(cmdKey);
+    toast(`→ ${box.session}`, 'ok');
+    // Exit edit mode and mark done
+    const txt = row.querySelector('.ctxt');
+    const inp = row.querySelector('.cedit');
+    if (inp) inp.remove();
+    if (txt) txt.style.display = '';
+    row.classList.add('done');
+    renderPlanTabs(boxId); renderBoxTabs();
+  } else {
+    const msg = r.error || 'unknown';
+    toast(msg.includes('not found') ? `Session '${box.session}' not found — check tmux ls` : `Send failed: ${msg}`, 'err');
+  }
+}
+
 async function runCmd(boxId, cmdKey, rawCmd) {
   const box = boxes[boxId];
   if (!box?.session) {
@@ -879,9 +946,9 @@ async function runCmd(boxId, cmdKey, rawCmd) {
     renderBoxTabs();
   } else {
     const msg = r.error || 'unknown error';
-    const isDeadSession = msg.includes('No such') || msg.includes('session') || msg.includes('screen');
+    const isDeadSession = msg.includes('No such') || msg.includes('session') || msg.includes('tmux');
     if (isDeadSession) {
-      toast(`Screen session '${box.session}' not found — run: screen -ls`, 'err');
+      toast(`tmux session '${box.session}' not found — run: tmux ls`, 'err');
     } else {
       toast(`Send failed: ${msg}`, 'err');
     }
@@ -902,6 +969,22 @@ async function toggleDone(boxId, key, sectionId) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+// Re-render variable highlights in the current plan section without re-rendering
+// the whole section (which would steal focus from the variable input)
+function refreshVarHighlights(boxId) {
+  const box  = boxes[boxId];
+  if (!box) return;
+  const vars = allVars(box);
+  document.querySelectorAll('#plan-col .ctxt').forEach(el => {
+    const raw = el.dataset.raw;
+    if (raw) el.innerHTML = renderVars(raw, vars);
+  });
+  document.querySelectorAll('.utils-txt').forEach(el => {
+    const raw = el.dataset.raw;
+    if (raw) el.innerHTML = renderVars(raw, vars);
+  });
+}
+
 function allVars(box) {
   return { ...(box.variables || {}), ...(box.custom_vars || {}) };
 }
