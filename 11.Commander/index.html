@@ -301,18 +301,34 @@ async function refreshSessions() {
 }
 
 function updateSessionSelects() {
+  // Deduplicate sessions by short name, keep most recent (highest PID)
+  const seen = {};
+  sessions.forEach(s => {
+    const short = s.split('.').slice(1).join('.');
+    const pid   = parseInt(s.split('.')[0]);
+    if (!seen[short] || pid > parseInt(seen[short].split('.')[0])) seen[short] = s;
+  });
+  const deduped = Object.values(seen);
+
   // All session dropdowns in left panel
   document.querySelectorAll('.sess-sel').forEach(sel => {
     const v = sel.value;
     sel.innerHTML = '<option value="">— none —</option>';
-    sessions.forEach(s => sel.appendChild(makeOpt(s, s)));
-    if (v) sel.value = v;
+    deduped.forEach(s => {
+      const short = s.split('.').slice(1).join('.');
+      sel.appendChild(makeOpt(s, short));
+    });
+    // Restore previous selection if still valid
+    if (v && deduped.includes(v)) sel.value = v;
   });
   // Modal
   const ms = document.getElementById('nb-sess');
   if (ms) {
     ms.innerHTML = '<option value="">— none yet —</option>';
-    sessions.forEach(s => ms.appendChild(makeOpt(s, s)));
+    deduped.forEach(s => {
+      const short = s.split('.').slice(1).join('.');
+      ms.appendChild(makeOpt(s, short));
+    });
   }
 }
 
@@ -357,8 +373,8 @@ function renderBoxTabs() {
     bar.insertBefore(tab, addBtn);
   });
 
-  document.getElementById('no-box').style.display =
-    Object.keys(boxes).length ? 'none' : 'flex';
+  const noBox = document.getElementById('no-box');
+  if (noBox) noBox.style.display = Object.keys(boxes).length ? 'none' : 'flex';
 }
 
 function planTotal(boxId) {
@@ -712,7 +728,9 @@ function renderUtils(boxId) {
 
 // ── Plan ───────────────────────────────────────────────────────────────────
 async function loadPlan(boxId) {
+  console.log('[loadPlan] fetching plan for', boxId);
   const r = await api('GET', `/api/boxes/${boxId}/plan`);
+  console.log('[loadPlan] response:', r);
   if (r.error) { toast('Plan error: ' + r.error, 'err'); return; }
   plans[boxId] = r.plan || [];
   boxes[boxId].done_cmds = r.done_cmds || [];
@@ -722,7 +740,8 @@ async function loadPlan(boxId) {
 
 function renderPlanTabs(boxId) {
   const col = document.getElementById('plan-col');
-  if (!col) return;
+  console.log('[renderPlanTabs] col=', col, 'plan length=', (plans[boxId]||[]).length);
+  if (!col) { console.error('[renderPlanTabs] plan-col not found!'); return; }
   const plan = plans[boxId] || [];
 
   if (!plan.length) {
