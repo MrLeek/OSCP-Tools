@@ -5,1167 +5,841 @@
 <title>OSCP Commander</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
-
 :root {
-  --bg:        #0d1117;
-  --bg2:       #161b22;
-  --bg3:       #1c2333;
-  --bg4:       #21262d;
-  --border:    #30363d;
-  --border-hi: #58a6ff;
-  --green:     #3fb950;
-  --green-dim: #1a4422;
-  --red:       #f85149;
-  --yellow:    #d29922;
-  --blue:      #58a6ff;
-  --purple:    #bc8cff;
-  --orange:    #e8873a;
-  --text:      #e6edf3;
-  --dim:       #7d8590;
-  --muted:     #484f58;
-  --accent:    #238636;
-  --accent-hi: #2ea043;
-  --r:         5px;
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--bg4:#21262d;
+  --border:#30363d;--border-hi:#58a6ff;
+  --green:#3fb950;--green-dim:#1a4422;
+  --red:#f85149;--yellow:#d29922;--yellow-dim:#2d1e00;
+  --blue:#58a6ff;--purple:#bc8cff;--orange:#e8873a;
+  --text:#e6edf3;--dim:#7d8590;--muted:#484f58;
+  --accent:#238636;--accent-hi:#2ea043;--r:5px;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  display: flex;
-  flex-direction: column;
-}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;display:flex;flex-direction:column;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-/* ── Top bar ── */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 14px;
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.logo {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--green);
-  letter-spacing: 2px;
-  white-space: nowrap;
-}
-.logo em { color: var(--red); font-style: normal; }
-.git-badge {
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  color: var(--dim);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.git-badge.ok    { border-color: var(--green-dim); color: var(--green); }
-.git-badge.err   { border-color: var(--red); color: var(--red); }
-.git-badge.new   { border-color: var(--yellow); color: var(--yellow); }
-
-.topbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+/* ── Topbar ── */
+.topbar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
+.logo{font-size:14px;font-weight:600;color:var(--green);letter-spacing:2px;}
+.logo em{color:var(--red);font-style:normal;}
+.git-badge{font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid var(--border);color:var(--dim);cursor:pointer;white-space:nowrap;}
+.git-badge.ok{border-color:var(--green-dim);color:var(--green);}
+.git-badge.err{border-color:var(--red);color:var(--red);}
+.git-badge.new{border-color:var(--yellow);color:var(--yellow);}
+.topbar-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
 
 /* ── Box tabs ── */
-.boxtabs {
-  display: flex;
-  gap: 0;
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  padding: 0 8px;
-  flex-shrink: 0;
-  overflow-x: auto;
-}
-.boxtab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  color: var(--dim);
-  font-size: 12px;
-  white-space: nowrap;
-  user-select: none;
-  transition: color 0.1s;
-}
-.boxtab:hover { color: var(--text); }
-.boxtab.active { color: var(--blue); border-bottom-color: var(--blue); }
-.boxtab .os-icon { font-size: 10px; }
-.boxtab .progress {
-  font-size: 9px;
-  color: var(--muted);
-  background: var(--bg3);
-  padding: 1px 5px;
-  border-radius: 8px;
-}
-.boxtab .progress.has-done { color: var(--green); background: var(--green-dim); }
-.add-box-btn {
-  padding: 7px 12px;
-  color: var(--dim);
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  border: none;
-  background: none;
-  font-family: inherit;
-}
-.add-box-btn:hover { color: var(--green); }
+.boxtabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 8px;flex-shrink:0;overflow-x:auto;}
+.boxtab{display:flex;align-items:center;gap:6px;padding:7px 14px;cursor:pointer;border-bottom:2px solid transparent;color:var(--dim);font-size:12px;white-space:nowrap;user-select:none;transition:color .1s;}
+.boxtab:hover{color:var(--text);}
+.boxtab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.boxtab .prog{font-size:9px;color:var(--muted);background:var(--bg3);padding:1px 5px;border-radius:8px;}
+.boxtab .prog.has{color:var(--green);background:var(--green-dim);}
+.add-box-btn{padding:7px 12px;color:var(--dim);cursor:pointer;font-size:16px;border:none;background:none;font-family:inherit;}
+.add-box-btn:hover{color:var(--green);}
+.os-dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.os-dot.linux{background:var(--orange);}
+.os-dot.windows{background:var(--blue);}
+.os-dot.ad{background:var(--purple);}
 
 /* ── Main layout ── */
-.main {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
+.main{display:flex;flex:1;overflow:hidden;}
 
 /* ── Left panel ── */
-.left-panel {
-  width: 260px;
-  flex-shrink: 0;
-  background: var(--bg2);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.panel-section {
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.panel-section-title {
-  padding: 7px 10px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--dim);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.panel-section-title button {
-  background: none;
-  border: none;
-  color: var(--dim);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 10px;
-  padding: 0;
-}
-.panel-section-title button:hover { color: var(--blue); }
+.left{width:270px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.lsec{border-bottom:1px solid var(--border);flex-shrink:0;}
+.lsec-title{padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);display:flex;justify-content:space-between;align-items:center;}
+.lsec-title button{background:none;border:none;color:var(--dim);cursor:pointer;font-family:inherit;font-size:10px;padding:0;}
+.lsec-title button:hover{color:var(--blue);}
+.lsec-body{padding:4px 10px 8px;}
 
-/* Session row */
-.session-row {
-  padding: 4px 10px 8px;
-  display: flex;
-  gap: 6px;
-}
-.session-select {
-  flex: 1;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 11px;
-  padding: 4px 6px;
-  border-radius: var(--r);
-  outline: none;
-}
-.session-select:focus { border-color: var(--border-hi); }
-.btn-xs {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--dim);
-  font-family: inherit;
-  font-size: 10px;
-  padding: 4px 7px;
-  border-radius: var(--r);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.btn-xs:hover { border-color: var(--border-hi); color: var(--text); }
-.btn-xs.green { border-color: var(--green-dim); color: var(--green); }
-.btn-xs.green:hover { background: var(--green-dim); }
+/* Session */
+.sess-row{display:flex;gap:5px;}
+.sess-sel{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:4px 6px;border-radius:var(--r);outline:none;}
+.sess-sel:focus{border-color:var(--border-hi);}
 
 /* Ports */
-.ports-area { padding: 4px 10px 8px; }
-.ports-input-row { display: flex; gap: 6px; margin-bottom: 6px; }
-.ports-input {
-  flex: 1;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 11px;
-  padding: 4px 6px;
-  border-radius: var(--r);
-  outline: none;
-}
-.ports-input:focus { border-color: var(--border-hi); }
-.port-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.port-chip {
-  background: var(--bg4);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 2px 6px;
-  font-size: 10px;
-  color: var(--blue);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.port-chip:hover { border-color: var(--red); }
-.port-chip .remove { color: var(--muted); font-size: 9px; }
-.port-chip:hover .remove { color: var(--red); }
-
-/* Nmap paste */
-.nmap-area { padding: 4px 10px 8px; }
-.nmap-textarea {
-  width: 100%;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 10px;
-  padding: 5px;
-  border-radius: var(--r);
-  resize: vertical;
-  min-height: 60px;
-  max-height: 120px;
-  outline: none;
-}
-.nmap-textarea:focus { border-color: var(--border-hi); }
+.port-row{display:flex;gap:5px;margin-bottom:5px;}
+.port-input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:4px 6px;border-radius:var(--r);outline:none;}
+.port-input:focus{border-color:var(--border-hi);}
+.chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;}
+.chip{background:var(--bg4);border:1px solid var(--border);border-radius:3px;padding:2px 5px;font-size:10px;color:var(--blue);cursor:pointer;display:flex;align-items:center;gap:3px;}
+.chip:hover{border-color:var(--red);}
+.chip .x{color:var(--muted);font-size:9px;}
+.chip:hover .x{color:var(--red);}
+.nmap-ta{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:5px;border-radius:var(--r);resize:vertical;min-height:55px;max-height:100px;outline:none;}
+.nmap-ta:focus{border-color:var(--border-hi);}
 
 /* Variables */
-.vars-scroll { overflow-y: auto; flex: 1; padding: 4px 10px 8px; }
-.var-row { display: grid; grid-template-columns: 90px 1fr; gap: 4px; margin-bottom: 5px; align-items: center; }
-.var-key { font-size: 10px; color: var(--yellow); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
-.var-val {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 11px;
-  padding: 3px 5px;
-  border-radius: 3px;
-  outline: none;
-  width: 100%;
-}
-.var-val:focus { border-color: var(--yellow); }
-.var-val.set { border-color: var(--green-dim); color: var(--green); }
+.vars-scroll{overflow-y:auto;flex:1;padding:4px 10px 4px;}
+.var-row{display:grid;grid-template-columns:95px 1fr 18px;gap:3px;margin-bottom:4px;align-items:center;}
+.var-key{font-size:10px;color:var(--yellow);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help;}
+.var-val{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:3px 5px;border-radius:3px;outline:none;width:100%;}
+.var-val:focus{border-color:var(--yellow);}
+.var-val.set{border-color:var(--green-dim);color:var(--green);}
+.var-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0;line-height:1;text-align:center;}
+.var-del:hover{color:var(--red);}
+.var-add-row{display:flex;gap:4px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
+.var-add-key{width:80px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:3px 5px;border-radius:3px;outline:none;}
+.var-add-key:focus{border-color:var(--yellow);}
+.var-add-val{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:3px 5px;border-radius:3px;outline:none;}
+.var-add-val:focus{border-color:var(--yellow);}
+
+/* Extras dropdown */
+.extras-wrap{padding:2px 10px 8px;}
+.extras-sel{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:3px 5px;border-radius:3px;outline:none;margin-bottom:4px;}
+.extras-sel:focus{border-color:var(--yellow);}
+
+/* Utils collapsible */
+.utils-wrap{border-top:1px solid var(--border);flex-shrink:0;}
+.utils-toggle{width:100%;background:var(--bg3);border:none;color:var(--dim);font-family:inherit;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;text-align:left;}
+.utils-toggle:hover{color:var(--text);}
+.utils-toggle .arrow{transition:transform .2s;}
+.utils-toggle.open .arrow{transform:rotate(180deg);}
+.utils-body{display:none;overflow-y:auto;max-height:260px;}
+.utils-body.open{display:block;}
+.utils-sec-hdr{padding:5px 10px 2px;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--bg3);}
+.utils-cmd{display:flex;align-items:center;gap:0;border-bottom:1px solid #21262d;padding:3px 0 3px 10px;}
+.utils-cmd:last-child{border-bottom:none;}
+.utils-cmd-text{flex:1;font-size:11px;color:var(--text);word-break:break-all;white-space:pre-wrap;padding-right:4px;}
+.utils-run-btn{flex-shrink:0;width:24px;background:transparent;border:none;border-left:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:9px;padding:0 4px;align-self:stretch;display:flex;align-items:center;justify-content:center;}
+.utils-run-btn:hover{background:var(--accent);color:#fff;}
+.utils-copy-btn{flex-shrink:0;width:22px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:10px;padding:0 3px;}
+.utils-copy-btn:hover{color:var(--blue);}
+
+/* Buttons */
+.btn-xs{background:var(--bg3);border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:10px;padding:4px 7px;border-radius:var(--r);cursor:pointer;white-space:nowrap;}
+.btn-xs:hover{border-color:var(--border-hi);color:var(--text);}
+.btn-xs.green{border-color:var(--green-dim);color:var(--green);}
+.btn-xs.green:hover{background:var(--green-dim);}
 
 /* ── Plan panel ── */
-.plan-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+.plan{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 
-/* Plan section tabs */
-.plan-tabs {
-  display: flex;
-  gap: 0;
-  background: var(--bg3);
-  border-bottom: 1px solid var(--border);
-  padding: 0 8px;
-  flex-shrink: 0;
-  overflow-x: auto;
-}
-.plan-tab {
-  padding: 6px 12px;
-  font-size: 11px;
-  color: var(--dim);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  white-space: nowrap;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.plan-tab:hover { color: var(--text); }
-.plan-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
-.plan-tab .tab-prog { font-size: 9px; color: var(--muted); }
-.plan-tab .tab-prog.done { color: var(--green); }
+/* Phase + plan tabs */
+.plan-tabs-wrap{background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;}
+.plan-tabs{display:flex;padding:0 8px;}
+.plan-tab{padding:6px 12px;font-size:11px;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;user-select:none;display:flex;align-items:center;gap:5px;}
+.plan-tab:hover{color:var(--text);}
+.plan-tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.plan-tab .tprog{font-size:9px;color:var(--muted);}
+.plan-tab .tprog.done{color:var(--green);}
+/* Phase badges */
+.plan-tab[data-phase="recon"]      .phase-dot{background:var(--dim);}
+.plan-tab[data-phase="port"]       .phase-dot{background:var(--blue);}
+.plan-tab[data-phase="foothold"]   .phase-dot{background:var(--red);}
+.plan-tab[data-phase="enum"]       .phase-dot{background:var(--orange);}
+.plan-tab[data-phase="privesc"]    .phase-dot{background:var(--yellow);}
+.plan-tab[data-phase="ad_enum"]    .phase-dot{background:var(--purple);}
+.plan-tab[data-phase="ad_attacks"] .phase-dot{background:var(--red);}
+.phase-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0;}
 
-/* Commands list */
-.cmds-scroll { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+/* Commands */
+.cmds-scroll{flex:1;overflow-y:auto;padding:8px;}
+.section-header{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--blue);padding:8px 4px 4px;margin-top:4px;display:flex;justify-content:space-between;}
+.section-header:first-child{margin-top:0;}
+.section-prog{color:var(--muted);letter-spacing:0;text-transform:none;}
+.cmd-row{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);margin-bottom:2px;transition:background .1s;position:relative;}
+.cmd-row:hover:not(.done){background:var(--bg3);border-color:#3d444d;}
+.cmd-row.done{opacity:.35;background:var(--bg);}
+.cmd-row.done .cmd-text{text-decoration:line-through;color:var(--muted);}
+.cmd-run{flex-shrink:0;width:26px;background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;border-radius:var(--r) 0 0 var(--r);}
+.cmd-run:hover{background:var(--accent);color:#fff;}
+.done .cmd-run:hover{background:transparent;color:var(--muted);}
+.cmd-body{flex:1;padding:4px 8px;min-width:0;}
+.cmd-comment{font-size:10px;color:var(--dim);font-style:italic;margin-bottom:1px;}
+.cmd-text{font-size:12px;word-break:break-all;white-space:pre-wrap;line-height:1.55;}
+.cmd-acts{display:flex;flex-direction:column;padding:2px;gap:1px;border-left:1px solid var(--border);flex-shrink:0;}
+.cmd-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:3px;}
+.cmd-btn:hover{background:var(--bg4);color:var(--text);}
+.ph{color:var(--yellow);background:rgba(210,153,34,.12);border-radius:2px;padding:0 1px;}
+.ph.set{color:var(--green);background:rgba(63,185,80,.1);}
+.ph.miss{color:var(--red);background:rgba(248,81,73,.1);}
 
-.cmd-row {
-  display: flex;
-  align-items: stretch;
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  background: var(--bg2);
-  transition: background 0.1s;
-  position: relative;
-}
-.cmd-row:hover:not(.is-done) { background: var(--bg3); border-color: #3d444d; }
-.cmd-row.is-done { opacity: 0.38; background: var(--bg); }
-.cmd-row.is-done .cmd-text { text-decoration: line-through; color: var(--muted); }
-.cmd-row.is-new { border-color: var(--yellow); }
-.cmd-row.is-new::before {
-  content: 'NEW';
-  position: absolute;
-  top: -1px; right: 6px;
-  font-size: 8px;
-  color: var(--yellow);
-  background: var(--bg2);
-  padding: 0 3px;
-  letter-spacing: 1px;
-}
-
-.cmd-run {
-  flex-shrink: 0;
-  width: 28px;
-  background: transparent;
-  border: none;
-  border-right: 1px solid var(--border);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r) 0 0 var(--r);
-  transition: background 0.1s, color 0.1s;
-}
-.cmd-run:hover { background: var(--accent); color: #fff; }
-.is-done .cmd-run { cursor: default; }
-.is-done .cmd-run:hover { background: transparent; color: var(--muted); }
-
-.cmd-body { flex: 1; padding: 5px 8px; min-width: 0; }
-.cmd-comment { font-size: 10px; color: var(--dim); font-style: italic; margin-bottom: 2px; }
-.cmd-text { font-size: 12px; word-break: break-all; white-space: pre-wrap; line-height: 1.6; }
-.cmd-lang {
-  font-size: 9px;
-  color: var(--muted);
-  background: var(--bg4);
-  padding: 0 4px;
-  border-radius: 3px;
-  align-self: flex-start;
-  margin-top: 2px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.cmd-actions {
-  display: flex;
-  flex-direction: column;
-  padding: 3px;
-  gap: 2px;
-  border-left: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.cmd-act-btn {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 11px;
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-family: inherit;
-  line-height: 1;
-}
-.cmd-act-btn:hover { background: var(--bg4); color: var(--text); }
-
-/* Placeholder highlighting */
-.ph         { color: var(--yellow); background: rgba(210,153,34,0.12); border-radius: 2px; padding: 0 1px; }
-.ph.ph-set  { color: var(--green);  background: rgba(63,185,80,0.1); }
-.ph.ph-miss { color: var(--red);    background: rgba(248,81,73,0.1); }
-
-/* ── Empty states ── */
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--dim);
-  font-size: 12px;
-  padding: 40px;
-  text-align: center;
-}
-.empty-state .big { font-size: 32px; }
+/* ── Empty ── */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dim);font-size:12px;padding:40px;text-align:center;}
+.empty .big{font-size:32px;}
 
 /* ── Toast ── */
-.toast {
-  position: fixed;
-  bottom: 18px; right: 18px;
-  padding: 7px 14px;
-  border-radius: var(--r);
-  font-size: 11px;
-  border: 1px solid;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 1000;
-  transition: opacity 0.2s;
-  max-width: 320px;
-}
-.toast.show { opacity: 1; }
-.toast.ok   { background: #0d1f0f; border-color: var(--green);  color: var(--green); }
-.toast.err  { background: #1f0d0d; border-color: var(--red);    color: var(--red); }
-.toast.info { background: #0d1520; border-color: var(--blue);   color: var(--blue); }
-.toast.warn { background: #1f1700; border-color: var(--yellow); color: var(--yellow); }
+.toast{position:fixed;bottom:18px;right:18px;padding:6px 14px;border-radius:var(--r);font-size:11px;border:1px solid;opacity:0;pointer-events:none;z-index:1000;transition:opacity .2s;max-width:340px;}
+.toast.show{opacity:1;}
+.toast.ok{background:#0d1f0f;border-color:var(--green);color:var(--green);}
+.toast.err{background:#1f0d0d;border-color:var(--red);color:var(--red);}
+.toast.info{background:#0d1520;border-color:var(--blue);color:var(--blue);}
+.toast.warn{background:#1f1700;border-color:var(--yellow);color:var(--yellow);}
 
 /* ── Modal ── */
-.modal-bg {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.75);
-  display: none; align-items: center; justify-content: center;
-  z-index: 500;
-}
-.modal-bg.open { display: flex; }
-.modal {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 20px;
-  min-width: 340px;
-  max-width: 440px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.modal-title { font-size: 13px; color: var(--blue); font-weight: 600; }
-.modal label { font-size: 11px; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
-.modal input, .modal select {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 12px;
-  padding: 6px 8px;
-  border-radius: var(--r);
-  outline: none;
-}
-.modal input:focus, .modal select:focus { border-color: var(--border-hi); }
-.modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
-.btn-primary {
-  background: var(--accent);
-  border: none; color: #fff;
-  font-family: inherit; font-size: 12px;
-  padding: 6px 16px; border-radius: var(--r);
-  cursor: pointer;
-}
-.btn-primary:hover { background: var(--accent-hi); }
-.btn-cancel {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--dim);
-  font-family: inherit; font-size: 12px;
-  padding: 6px 12px; border-radius: var(--r);
-  cursor: pointer;
-}
-.btn-cancel:hover { border-color: var(--red); color: var(--red); }
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:500;}
+.modal-bg.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px;min-width:340px;max-width:440px;width:100%;display:flex;flex-direction:column;gap:12px;}
+.modal-title{font-size:13px;color:var(--blue);font-weight:600;}
+.modal label{font-size:11px;color:var(--dim);display:flex;flex-direction:column;gap:4px;}
+.modal input,.modal select{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:12px;padding:6px 8px;border-radius:var(--r);outline:none;}
+.modal input:focus,.modal select:focus{border-color:var(--border-hi);}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;}
+.btn-ok{background:var(--accent);border:none;color:#fff;font-family:inherit;font-size:12px;padding:6px 16px;border-radius:var(--r);cursor:pointer;}
+.btn-ok:hover{background:var(--accent-hi);}
+.btn-cancel{background:transparent;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:12px;padding:6px 12px;border-radius:var(--r);cursor:pointer;}
+.btn-cancel:hover{border-color:var(--red);color:var(--red);}
 
-/* ── Hint bar ── */
-.hintbar {
-  padding: 3px 12px;
-  background: var(--bg2);
-  border-top: 1px solid var(--border);
-  font-size: 10px;
-  color: var(--muted);
-  flex-shrink: 0;
-  display: flex;
-  gap: 16px;
-}
-kbd {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  padding: 0 3px;
-  font-family: inherit;
-  font-size: 9px;
-}
-
-/* OS colour dots */
-.os-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.os-dot.linux   { background: var(--orange); }
-.os-dot.windows { background: var(--blue); }
-.os-dot.ad      { background: var(--purple); }
-
-/* New cmds banner */
-.new-banner {
-  background: rgba(210,153,34,0.1);
-  border: 1px solid var(--yellow);
-  border-radius: var(--r);
-  padding: 7px 12px;
-  margin: 8px 10px 0;
-  font-size: 11px;
-  color: var(--yellow);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-}
-.new-banner button { background: none; border: none; color: var(--yellow); cursor: pointer; font-size: 12px; }
+/* ── Hint ── */
+.hint{padding:3px 12px;background:var(--bg2);border-top:1px solid var(--border);font-size:10px;color:var(--muted);flex-shrink:0;display:flex;gap:16px;}
+kbd{background:var(--bg3);border:1px solid var(--border);border-radius:2px;padding:0 3px;font-family:inherit;font-size:9px;}
 </style>
 </head>
 <body>
 
-<!-- ── Top bar ── -->
 <div class="topbar">
   <div class="logo">OSCP<em>//</em>CMD</div>
-  <div id="git-badge" class="git-badge" onclick="manualGitPull()" title="Click to force git pull">⟳ git</div>
+  <div id="git-badge" class="git-badge" onclick="manualPull()" title="Click to force git pull">⟳ git</div>
   <div class="topbar-right">
     <button class="btn-xs" onclick="refreshSessions()">↺ Sessions</button>
   </div>
 </div>
 
-<!-- ── Box tabs ── -->
 <div class="boxtabs" id="boxtabs">
-  <button class="add-box-btn" onclick="openNewBoxModal()" title="Add a new box">＋</button>
+  <button class="add-box-btn" onclick="openModal('modal-box')" title="Add box">＋</button>
 </div>
 
-<!-- ── Main ── -->
 <div class="main" id="main">
-  <div class="empty-state" id="no-box-msg">
+  <div class="empty" id="no-box">
     <div class="big">🎯</div>
     <div>No boxes yet — click <strong>＋</strong> to add one</div>
-    <div style="color:var(--muted);font-size:11px">One per standalone box + one for AD set</div>
+    <div style="color:var(--muted);font-size:11px">One per standalone box + one for the AD set</div>
   </div>
 </div>
 
-<!-- ── Hint bar ── -->
-<div class="hintbar">
+<div class="hint">
   <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> send focused command</span>
-  <span><kbd>C</kbd> copy command</span>
-  <span><kbd>D</kbd> toggle done</span>
+  <span><kbd>C</kbd> copy · <kbd>D</kbd> toggle done</span>
 </div>
 
-<!-- ── Toast ── -->
 <div class="toast" id="toast"></div>
 
-<!-- ── New Box Modal ── -->
-<div class="modal-bg" id="modal-new-box">
+<!-- Add box modal -->
+<div class="modal-bg" id="modal-box">
   <div class="modal">
     <div class="modal-title">Add Box</div>
-    <label>Box name (e.g. box1, dc01)
-      <input id="nb-name" placeholder="box1" maxlength="32">
-    </label>
+    <label>Name (e.g. box1, dc01)<input id="nb-name" placeholder="box1" maxlength="32"></label>
     <label>OS type
       <select id="nb-os">
         <option value="linux">🐧 Linux</option>
         <option value="windows">🪟 Windows</option>
-        <option value="ad">🏰 Active Directory (Windows + AD)</option>
+        <option value="ad">🏰 Active Directory</option>
       </select>
     </label>
-    <label>Screen session (optional — can set later)
-      <select id="nb-session">
-        <option value="">— none yet —</option>
-      </select>
+    <label>Screen session (optional)
+      <select id="nb-sess"><option value="">— none yet —</option></select>
     </label>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('modal-new-box')">Cancel</button>
-      <button class="btn-primary" onclick="createBox()">Create</button>
+      <button class="btn-cancel" onclick="closeModal('modal-box')">Cancel</button>
+      <button class="btn-ok" onclick="createBox()">Create</button>
     </div>
   </div>
 </div>
 
-<!-- ── New Session Modal ── -->
-<div class="modal-bg" id="modal-new-session">
+<!-- New session modal -->
+<div class="modal-bg" id="modal-sess">
   <div class="modal">
     <div class="modal-title">New Screen Session</div>
-    <label>Session name
-      <input id="ns-name" placeholder="box1" maxlength="32">
-    </label>
+    <label>Session name<input id="ns-name" placeholder="box1" maxlength="32"></label>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('modal-new-session')">Cancel</button>
-      <button class="btn-primary" onclick="createSession()">Create</button>
+      <button class="btn-cancel" onclick="closeModal('modal-sess')">Cancel</button>
+      <button class="btn-ok" onclick="createSession()">Create</button>
     </div>
   </div>
 </div>
 
 <script>
-// ─── State ────────────────────────────────────────────────────────────────────
-let boxes         = {};   // id -> box object
-let currentBoxId  = null;
-let currentPlanId = null; // which plan section tab is active
-let plans         = {};   // boxId -> [{id, label, commands}]
-let sessions      = [];
-let newCmds       = [];   // from git pull
+// ── State ─────────────────────────────────────────────────────────────────────
+let boxes        = {};
+let curBox       = null;
+let curTab       = null;
+let plans        = {};
+let sessions     = [];
+let utilsSecs    = [];
+let extraVarDefs = [];
+const OS_ICONS   = {linux:'🐧',windows:'🪟',ad:'🏰'};
 
-const OS_ICONS = { linux: '🐧', windows: '🪟', ad: '🏰' };
-
-// ─── Boot ─────────────────────────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────────
 async function init() {
-  const r = await api('GET', '/api/init');
-  if (r.boxes) r.boxes.forEach(b => { boxes[b.id] = b; });
-  updateGitBadge(r.git);
+  const r = await api('GET','/api/init');
+  if (r.boxes) r.boxes.forEach(b => boxes[b.id] = b);
+  updateGit(r.git);
   await refreshSessions();
+  await loadUtils();
   renderBoxTabs();
-  if (Object.keys(boxes).length > 0) switchBox(Object.keys(boxes)[0]);
+  if (Object.keys(boxes).length) switchBox(Object.keys(boxes)[0]);
 }
 
-// ─── Git ──────────────────────────────────────────────────────────────────────
-function updateGitBadge(gs) {
+// ── Git ───────────────────────────────────────────────────────────────────────
+function updateGit(gs) {
   if (!gs) return;
   const el = document.getElementById('git-badge');
   if (gs.error) {
-    el.className = 'git-badge err';
-    el.textContent = '⚠ git error';
+    el.className='git-badge err'; el.textContent='⚠ git';
     el.title = gs.error;
-  } else if (gs.new_cmds && gs.new_cmds.length) {
-    el.className = 'git-badge new';
-    el.textContent = `⟳ ${gs.new_cmds.length} new cmd${gs.new_cmds.length>1?'s':''}`;
-    newCmds = gs.new_cmds;
-    showNewCmdsBanner();
+  } else if (gs.new_cmds?.length) {
+    el.className='git-badge new';
+    el.textContent=`⟳ ${gs.new_cmds.length} new`;
   } else if (gs.last_pull) {
-    el.className = 'git-badge ok';
-    el.textContent = `✓ synced ${gs.last_pull}`;
+    el.className='git-badge ok';
+    el.textContent=`✓ ${gs.last_pull}`;
   }
 }
-
-function showNewCmdsBanner() {
-  const panel = document.querySelector('.plan-panel');
-  if (!panel) return;
-  const existing = panel.querySelector('.new-banner');
-  if (existing) existing.remove();
-  const b = document.createElement('div');
-  b.className = 'new-banner';
-  b.innerHTML = `⚡ ${newCmds.length} new command${newCmds.length>1?'s':''} from git pull — marked in plan
-    <button onclick="this.parentElement.remove()">✕</button>`;
-  panel.insertBefore(b, panel.querySelector('.plan-tabs'));
+async function manualPull() {
+  toast('Pulling…','info');
+  const r = await api('POST','/api/git/pull');
+  updateGit(r);
+  if (r.changed_files?.length) { plans={}; if(curBox) await loadPlan(curBox); }
+  toast(r.error?'Pull error':'✓ Up to date', r.error?'err':'ok');
 }
 
-async function manualGitPull() {
-  toast('Pulling cheatsheet…', 'info');
-  const r = await api('POST', '/api/git/pull');
-  updateGitBadge(r);
-  if (r.changed_files && r.changed_files.length) {
-    // Invalidate cached plans for affected files
-    Object.keys(plans).forEach(bid => { plans[bid] = null; });
-    if (currentBoxId) await loadPlan(currentBoxId);
-  }
-  toast(r.error ? 'Pull error: '+r.error : '✓ Up to date', r.error?'err':'ok');
-}
-
-// ─── Sessions ─────────────────────────────────────────────────────────────────
+// ── Sessions ──────────────────────────────────────────────────────────────────
 async function refreshSessions() {
-  const r = await api('GET', '/api/sessions');
+  const r = await api('GET','/api/sessions');
   sessions = r.sessions || [];
-  // Update all session dropdowns
-  document.querySelectorAll('.session-select').forEach(sel => {
-    const cur = sel.value;
+  // Update all session selects
+  document.querySelectorAll('.sess-sel').forEach(sel => {
+    const v = sel.value;
     sel.innerHTML = '<option value="">— none —</option>';
-    sessions.forEach(s => {
-      const o = document.createElement('option');
-      o.value = s; o.textContent = s;
-      sel.appendChild(o);
-    });
-    if (cur) sel.value = cur;
+    sessions.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+    if (v) sel.value = v;
   });
-  // Update modal session select
-  const msel = document.getElementById('nb-session');
-  if (msel) {
-    const cur = msel.value;
-    msel.innerHTML = '<option value="">— none yet —</option>';
-    sessions.forEach(s => {
-      const o = document.createElement('option');
-      o.value = s; o.textContent = s;
-      msel.appendChild(o);
-    });
-    if (cur) msel.value = cur;
+  // Modal session select
+  const ms = document.getElementById('nb-sess');
+  if (ms) {
+    ms.innerHTML='<option value="">— none yet —</option>';
+    sessions.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; ms.appendChild(o); });
   }
 }
 
 async function createSession() {
   const name = document.getElementById('ns-name').value.trim();
   if (!name) return;
-  const r = await api('POST', '/api/sessions', { name });
-  if (r.error) { toast(r.error, 'err'); return; }
+  const r = await api('POST','/api/sessions',{name});
+  if (r.error) { toast(r.error,'err'); return; }
   await refreshSessions();
-  closeModal('modal-new-session');
-  toast(`Screen session '${name}' created`, 'ok');
-  // Auto-assign to current box if none set
-  if (currentBoxId && !boxes[currentBoxId].session) {
-    await updateBox(currentBoxId, { session: sessions.find(s => s.endsWith('.'+name)) || name });
-    renderLeftPanel(currentBoxId);
+  closeModal('modal-sess');
+  toast(`Session '${name}' created`,'ok');
+  if (curBox && !boxes[curBox].session) {
+    const match = sessions.find(s=>s.endsWith('.'+name))||name;
+    await patchBox(curBox,{session:match});
+    renderLeft(curBox);
   }
 }
 
-// ─── Boxes ────────────────────────────────────────────────────────────────────
+// ── Utils ─────────────────────────────────────────────────────────────────────
+async function loadUtils() {
+  const r = await api('GET','/api/utils');
+  utilsSecs = r.sections || [];
+}
+
+function renderUtils(boxId) {
+  const wrap = document.getElementById('utils-wrap');
+  if (!wrap) return;
+  const body = wrap.querySelector('.utils-body');
+  if (!body) return;
+  const box  = boxes[boxId] || {};
+  const vars = allVars(box);
+  body.innerHTML = '';
+
+  utilsSecs.forEach(sec => {
+    const hdr = document.createElement('div');
+    hdr.className='utils-sec-hdr'; hdr.textContent=sec.section; body.appendChild(hdr);
+    sec.commands.forEach((cmd,i) => {
+      const row = document.createElement('div'); row.className='utils-cmd';
+      const txt = document.createElement('div'); txt.className='utils-cmd-text';
+      txt.innerHTML = renderVars(cmd.cmd, vars);
+      const runB = document.createElement('button'); runB.className='utils-run-btn'; runB.textContent='▶';
+      runB.title='Send to screen session';
+      runB.onclick = () => runCmd(boxId, `utils:${i}`, cmd.cmd, true);
+      const cpB = document.createElement('button'); cpB.className='utils-copy-btn'; cpB.textContent='⎘';
+      cpB.onclick = () => copyCmd(cmd.cmd, vars);
+      row.appendChild(txt); row.appendChild(cpB); row.appendChild(runB);
+      body.appendChild(row);
+    });
+  });
+}
+
+// ── Box tabs ──────────────────────────────────────────────────────────────────
 function renderBoxTabs() {
   const bar = document.getElementById('boxtabs');
-  // Remove all except the + button
-  bar.querySelectorAll('.boxtab').forEach(el => el.remove());
+  bar.querySelectorAll('.boxtab').forEach(e=>e.remove());
   const addBtn = bar.querySelector('.add-box-btn');
-
   Object.values(boxes).forEach(box => {
-    const done  = box.done_cmds ? box.done_cmds.length : 0;
+    const done  = box.done_cmds?.length || 0;
     const total = planTotal(box.id);
     const tab   = document.createElement('div');
-    tab.className = 'boxtab' + (box.id === currentBoxId ? ' active' : '');
+    tab.className = 'boxtab'+(box.id===curBox?' active':'');
     tab.dataset.boxId = box.id;
-    tab.innerHTML = `
-      <span class="os-dot ${box.os}"></span>
-      <span>${box.name}</span>
-      ${total > 0 ? `<span class="progress ${done>0?'has-done':''}">${done}/${total}</span>` : ''}
-    `;
-    tab.onclick = () => switchBox(box.id);
+    tab.innerHTML = `<span class="os-dot ${box.os}"></span><span>${escH(box.name)}</span>${total?`<span class="prog ${done?'has':''}">${done}/${total}</span>`:''}`;
+    tab.onclick = ()=>switchBox(box.id);
     bar.insertBefore(tab, addBtn);
   });
-
-  const noMsg = document.getElementById('no-box-msg');
-  if (noMsg) noMsg.style.display = Object.keys(boxes).length ? 'none' : 'flex';
+  document.getElementById('no-box').style.display = Object.keys(boxes).length?'none':'flex';
 }
 
 function planTotal(boxId) {
   if (!plans[boxId]) return 0;
-  return plans[boxId].reduce((a, s) => a + s.commands.length, 0);
+  return plans[boxId].reduce((a,s)=>a+(s.sections?.reduce((b,sec)=>b+sec.commands.length,0)||0),0);
 }
 
+// ── Switch box ────────────────────────────────────────────────────────────────
 async function switchBox(boxId) {
-  currentBoxId  = boxId;
-  currentPlanId = null;
+  curBox = boxId; curTab = null;
   renderBoxTabs();
-  renderLeftPanel(boxId);
+  ensureLayout();
+  renderLeft(boxId);
   await loadPlan(boxId);
 }
 
-function openNewBoxModal() {
-  refreshSessions();
-  document.getElementById('nb-name').value = '';
-  document.getElementById('nb-os').value   = 'linux';
-  document.getElementById('modal-new-box').classList.add('open');
-  setTimeout(() => document.getElementById('nb-name').focus(), 50);
+function ensureLayout() {
+  const main = document.getElementById('main');
+  if (document.getElementById('box-wrapper')) return;
+  main.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.id='box-wrapper'; wrap.style.cssText='display:flex;flex:1;overflow:hidden;width:100%';
+  main.appendChild(wrap);
+
+  const left = document.createElement('div'); left.id='left-panel'; left.className='left';
+  const plan = document.createElement('div'); plan.id='plan-panel'; plan.className='plan';
+  plan.innerHTML='<div class="empty"><div class="big">⏳</div><div>Building plan…</div></div>';
+  wrap.appendChild(left); wrap.appendChild(plan);
 }
 
-async function createBox() {
-  const name    = document.getElementById('nb-name').value.trim();
-  const os      = document.getElementById('nb-os').value;
-  const session = document.getElementById('nb-session').value;
-  if (!name) { toast('Name required', 'err'); return; }
-  const r = await api('POST', '/api/boxes', { name, os, session });
-  if (r.error) { toast(r.error, 'err'); return; }
-  boxes[r.box.id] = r.box;
-  closeModal('modal-new-box');
-  renderBoxTabs();
-  switchBox(r.box.id);
-}
+// ── Left panel ────────────────────────────────────────────────────────────────
+async function renderLeft(boxId) {
+  const box = boxes[boxId];
+  if (!box) return;
+  const left = document.getElementById('left-panel');
+  if (!left) return;
 
-// ─── Left panel ───────────────────────────────────────────────────────────────
-function renderLeftPanel(boxId) {
-  const box   = boxes[boxId];
-  const main  = document.getElementById('main');
-  let wrapper = document.getElementById('box-wrapper');
+  // Load variable schema for extras list
+  const schemaR = await api('GET',`/api/vars_schema/${box.os}`);
+  extraVarDefs = schemaR.extra_vars || [];
 
-  if (!wrapper) {
-    main.innerHTML = '';
-    wrapper = document.createElement('div');
-    wrapper.id = 'box-wrapper';
-    wrapper.style.cssText = 'display:flex;flex:1;overflow:hidden;width:100%';
-    main.appendChild(wrapper);
-  }
-
-  // Left panel
-  let left = document.getElementById('left-panel');
-  if (!left) {
-    left = document.createElement('div');
-    left.id = 'left-panel';
-    left.className = 'left-panel';
-    wrapper.appendChild(left);
-  }
-
-  // Build vars schema
-  const varKeys = Object.keys(box.variables);
-  const varRows = varKeys.map(k => {
-    const v = box.variables[k] || '';
-    return `<div class="var-row">
-      <div class="var-key" title="${k}">${k}</div>
-      <input class="var-val ${v?'set':''}" data-var="${k}" value="${escHtml(v)}"
-        oninput="onVarInput(this)" placeholder="...">
-    </div>`;
-  }).join('');
+  const varKeys    = Object.keys(box.variables);
+  const customKeys = Object.keys(box.custom_vars||{});
+  const activeExtras = new Set(box.active_extras||[]);
 
   left.innerHTML = `
-    <div class="panel-section">
-      <div class="panel-section-title">
-        Screen Session
-        <button onclick="openNewSessionModal()">+ new</button>
+    <!-- Session -->
+    <div class="lsec">
+      <div class="lsec-title">Screen Session
+        <button onclick="openNewSessModal()">+ new</button>
       </div>
-      <div class="session-row">
-        <select class="session-select" id="sess-${boxId}" onchange="onSessionChange('${boxId}',this.value)">
-          <option value="">— none —</option>
-          ${sessions.map(s=>`<option value="${s}" ${s===box.session?'selected':''}>${s}</option>`).join('')}
-        </select>
-        <button class="btn-xs" onclick="refreshSessions()">↺</button>
-      </div>
-    </div>
-
-    <div class="panel-section">
-      <div class="panel-section-title">
-        Open Ports
-        <button onclick="addPortManual('${boxId}')">+ add</button>
-      </div>
-      <div class="ports-area">
-        <div class="ports-input-row">
-          <input class="ports-input" id="port-input-${boxId}" placeholder="22 80 445 ..." 
-            onkeydown="if(event.key==='Enter')addPortManual('${boxId}')">
-          <button class="btn-xs" onclick="addPortManual('${boxId}')">Add</button>
-        </div>
-        <div class="port-chips" id="port-chips-${boxId}">
-          ${renderPortChips(box)}
+      <div class="lsec-body">
+        <div class="sess-row">
+          <select class="sess-sel" id="sess-${boxId}" onchange="onSessChange('${boxId}',this.value)">
+            <option value="">— none —</option>
+            ${sessions.map(s=>`<option value="${s}"${s===box.session?' selected':''}>${s}</option>`).join('')}
+          </select>
+          <button class="btn-xs" onclick="refreshSessions()">↺</button>
         </div>
       </div>
     </div>
 
-    <div class="panel-section">
-      <div class="panel-section-title">
-        Paste Nmap Output
-      </div>
-      <div class="nmap-area">
-        <textarea class="nmap-textarea" id="nmap-${boxId}" 
-          placeholder="Paste nmap output here…">${escHtml(box.nmap_raw||'')}</textarea>
-        <button class="btn-xs green" style="margin-top:4px;width:100%" onclick="parseNmap('${boxId}')">⚡ Parse Ports</button>
+    <!-- Ports -->
+    <div class="lsec">
+      <div class="lsec-title">Open Ports</div>
+      <div class="lsec-body">
+        <div class="port-row">
+          <input class="port-input" id="port-in-${boxId}" placeholder="22 80 445 …"
+            onkeydown="if(event.key==='Enter')addPorts('${boxId}')">
+          <button class="btn-xs" onclick="addPorts('${boxId}')">Add</button>
+        </div>
+        <div class="chips" id="chips-${boxId}">${chipsHtml(box)}</div>
+        <textarea class="nmap-ta" id="nmap-${boxId}" placeholder="Paste nmap output…">${escH(box.nmap_raw||'')}</textarea>
+        <button class="btn-xs green" style="margin-top:4px;width:100%" onclick="parseNmap('${boxId}')">⚡ Parse nmap</button>
       </div>
     </div>
 
-    <div class="panel-section" style="border-bottom:none;flex:1;display:flex;flex-direction:column;overflow:hidden">
-      <div class="panel-section-title">
-        Variables
-        <button onclick="clearVars('${boxId}')">clear</button>
+    <!-- Variables -->
+    <div class="lsec" style="flex:1;display:flex;flex-direction:column;overflow:hidden;border-bottom:none">
+      <div class="lsec-title">Variables
+        <button onclick="clearVars('${boxId}')">clear all</button>
       </div>
-      <div class="vars-scroll" id="vars-${boxId}">${varRows}</div>
+      <div class="vars-scroll" id="vars-${boxId}">
+        ${varKeys.map(k=>varRowHtml(k, box.variables[k]||'', false)).join('')}
+        ${customKeys.map(k=>varRowHtml(k, box.custom_vars[k]||'', true)).join('')}
+        ${Array.from(activeExtras).filter(k=>!varKeys.includes(k)&&!customKeys.includes(k)).map(k=>varRowHtml(k,'',true)).join('')}
+
+        <!-- Extras picker -->
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">
+          <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Add predefined variable</div>
+          <div class="extras-wrap" style="padding:0">
+            <select class="extras-sel" id="extras-${boxId}" onchange="addExtraVar('${boxId}',this)">
+              <option value="">— pick extra var —</option>
+              ${extraVarDefs.filter(v=>!varKeys.includes(v.key)&&!activeExtras.has(v.key)).map(v=>`<option value="${v.key}" title="${v.desc}">${v.key} — ${v.desc}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <!-- Free-form add -->
+        <div style="margin-top:4px;">
+          <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Add custom variable</div>
+          <div class="var-add-row">
+            <input class="var-add-key" id="cvar-key-${boxId}" placeholder="KEY">
+            <input class="var-add-val" id="cvar-val-${boxId}" placeholder="value"
+              onkeydown="if(event.key==='Enter')addCustomVar('${boxId}')">
+            <button class="btn-xs green" onclick="addCustomVar('${boxId}')">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Utils collapsible -->
+    <div class="utils-wrap" id="utils-wrap">
+      <button class="utils-toggle" id="utils-toggle" onclick="toggleUtils('${boxId}')">
+        <span>🔧 Utils</span><span class="arrow">▾</span>
+      </button>
+      <div class="utils-body" id="utils-body"></div>
     </div>
   `;
 
-  // Ensure plan panel exists
-  let planPanel = document.getElementById('plan-panel');
-  if (!planPanel) {
-    planPanel = document.createElement('div');
-    planPanel.id = 'plan-panel';
-    planPanel.className = 'plan-panel';
-    wrapper.appendChild(planPanel);
-    planPanel.innerHTML = `<div class="empty-state"><div class="big">⏳</div><div>Building plan…</div></div>`;
-  }
+  // Wire var inputs
+  document.querySelectorAll(`#vars-${boxId} .var-val`).forEach(inp => {
+    inp.addEventListener('input', ()=>onVarInput(boxId, inp));
+  });
 }
 
-function renderPortChips(box) {
-  return (box.ports || []).map(p =>
-    `<div class="port-chip" title="Click to remove port ${p}" onclick="removePort('${box.id}','${p}')">
-      ${p}<span class="remove">✕</span>
+function varRowHtml(key, val, deletable) {
+  return `<div class="var-row" id="vrow-${key}">
+    <div class="var-key" title="${key}">${key}</div>
+    <input class="var-val${val?' set':''}" data-var="${key}" value="${escH(val)}" placeholder="…">
+    ${deletable?`<button class="var-del" onclick="removeVar('${key}')" title="Remove">✕</button>`:'<div></div>'}
+  </div>`;
+}
+
+function chipsHtml(box) {
+  return (box.ports||[]).map(p=>
+    `<div class="chip" onclick="removePort('${box.id}','${p}')">
+      ${p}<span class="x">✕</span>
     </div>`
   ).join('');
 }
 
-function openNewSessionModal() {
-  document.getElementById('ns-name').value = '';
-  document.getElementById('modal-new-session').classList.add('open');
-  setTimeout(() => document.getElementById('ns-name').focus(), 50);
+async function onSessChange(boxId, sess) {
+  boxes[boxId].session = sess;
+  await patchBox(boxId,{session:sess});
 }
 
-async function onSessionChange(boxId, session) {
-  await updateBox(boxId, { session });
-  boxes[boxId].session = session;
-}
-
-async function onVarInput(input) {
-  const key = input.dataset.var;
-  const val = input.value;
-  input.classList.toggle('set', !!val);
-  boxes[currentBoxId].variables[key] = val;
-  // Debounce save
-  clearTimeout(input._saveTimer);
-  input._saveTimer = setTimeout(() => {
-    updateBox(currentBoxId, { variables: { [key]: val } });
-    if (currentPlanId) renderPlanSection(currentBoxId, currentPlanId);
-  }, 400);
-}
-
-async function addPortManual(boxId) {
-  const input = document.getElementById(`port-input-${boxId}`);
-  const raw   = (input.value || '').trim();
-  if (!raw) return;
-  const nums  = raw.match(/\d+/g) || [];
-  const box   = boxes[boxId];
-  const existing = new Set(box.ports.map(String));
-  nums.forEach(n => existing.add(n));
-  const sorted = Array.from(existing).sort((a,b) => parseInt(a)-parseInt(b));
-  await updateBox(boxId, { ports: sorted });
-  boxes[boxId].ports = sorted;
-  input.value = '';
-  document.getElementById(`port-chips-${boxId}`).innerHTML = renderPortChips(boxes[boxId]);
-  // Rebuild plan
-  plans[boxId] = null;
-  await loadPlan(boxId);
-  toast('Port added — plan updated', 'ok');
+async function addPorts(boxId) {
+  const inp = document.getElementById(`port-in-${boxId}`);
+  const nums = (inp.value||'').match(/\d+/g)||[];
+  if (!nums.length) return;
+  const box = boxes[boxId];
+  const ex  = new Set(box.ports.map(String));
+  nums.forEach(n=>ex.add(n));
+  box.ports = [...ex].sort((a,b)=>parseInt(a)-parseInt(b));
+  await patchBox(boxId,{ports:box.ports});
+  inp.value='';
+  document.getElementById(`chips-${boxId}`).innerHTML=chipsHtml(box);
+  plans[boxId]=null; await loadPlan(boxId);
+  toast('Port added — plan updated','ok');
 }
 
 async function removePort(boxId, port) {
-  const box  = boxes[boxId];
-  const ports= box.ports.filter(p => String(p) !== String(port));
-  await updateBox(boxId, { ports });
-  boxes[boxId].ports = ports;
-  document.getElementById(`port-chips-${boxId}`).innerHTML = renderPortChips(boxes[boxId]);
-  plans[boxId] = null;
-  await loadPlan(boxId);
+  const box = boxes[boxId];
+  box.ports = box.ports.filter(p=>String(p)!==String(port));
+  await patchBox(boxId,{ports:box.ports});
+  document.getElementById(`chips-${boxId}`).innerHTML=chipsHtml(box);
+  plans[boxId]=null; await loadPlan(boxId);
 }
 
 async function parseNmap(boxId) {
   const text = document.getElementById(`nmap-${boxId}`).value;
-  const r    = await api('POST', `/api/boxes/${boxId}/nmap`, { nmap: text });
-  if (r.error) { toast(r.error, 'err'); return; }
+  const r = await api('POST',`/api/boxes/${boxId}/nmap`,{nmap:text});
+  if (r.error){toast(r.error,'err');return;}
   boxes[boxId].ports = r.ports;
-  document.getElementById(`port-chips-${boxId}`).innerHTML = renderPortChips(boxes[boxId]);
-  plans[boxId] = null;
-  await loadPlan(boxId);
-  toast(`Parsed ${r.ports.length} port(s) — plan updated`, 'ok');
+  document.getElementById(`chips-${boxId}`).innerHTML=chipsHtml(boxes[boxId]);
+  plans[boxId]=null; await loadPlan(boxId);
+  toast(`Parsed ${r.ports.length} port(s)`,'ok');
+}
+
+function onVarInput(boxId, inp) {
+  const key = inp.dataset.var;
+  const val = inp.value;
+  inp.classList.toggle('set',!!val);
+  const box = boxes[boxId];
+  if (key in (box.custom_vars||{})) {
+    box.custom_vars[key]=val;
+  } else {
+    box.variables[key]=val;
+  }
+  clearTimeout(inp._t);
+  inp._t = setTimeout(()=>{
+    patchBox(boxId,{variables:{[key]:val}});
+    if (curTab) renderSection(boxId, curTab);
+    renderUtils(boxId);
+  },400);
+}
+
+async function addExtraVar(boxId, sel) {
+  const key = sel.value;
+  if (!key) return;
+  const box = boxes[boxId];
+  if (!box.active_extras) box.active_extras=[];
+  if (!box.active_extras.includes(key)) {
+    box.active_extras.push(key);
+    if (!box.variables[key] && !box.custom_vars?.[key]) box.variables[key]='';
+  }
+  await patchBox(boxId,{active_extras:box.active_extras});
+  renderLeft(boxId);
+}
+
+async function addCustomVar(boxId) {
+  const keyEl = document.getElementById(`cvar-key-${boxId}`);
+  const valEl = document.getElementById(`cvar-val-${boxId}`);
+  const key   = keyEl.value.trim().toUpperCase().replace(/\s+/g,'_');
+  const val   = valEl.value.trim();
+  if (!key) return;
+  const box = boxes[boxId];
+  if (!box.custom_vars) box.custom_vars={};
+  box.custom_vars[key]=val;
+  await patchBox(boxId,{custom_vars:{[key]:val}});
+  keyEl.value=''; valEl.value='';
+  renderLeft(boxId);
+  toast(`Variable ${key} added`,'ok');
+}
+
+async function removeVar(key) {
+  if (!curBox) return;
+  const box = boxes[curBox];
+  if (box.custom_vars?.[key]!==undefined) {
+    delete box.custom_vars[key];
+  } else {
+    box.active_extras=(box.active_extras||[]).filter(k=>k!==key);
+  }
+  await patchBox(curBox,{custom_vars:box.custom_vars, active_extras:box.active_extras});
+  renderLeft(curBox);
 }
 
 function clearVars(boxId) {
   const box = boxes[boxId];
-  Object.keys(box.variables).forEach(k => { box.variables[k] = ''; });
-  updateBox(boxId, { variables: box.variables });
-  renderLeftPanel(boxId);
+  Object.keys(box.variables).forEach(k=>box.variables[k]='');
+  box.custom_vars={};
+  patchBox(boxId,{variables:box.variables,custom_vars:{}});
+  renderLeft(boxId);
 }
 
-// ─── Plan ─────────────────────────────────────────────────────────────────────
+function toggleUtils(boxId) {
+  const btn  = document.getElementById('utils-toggle');
+  const body = document.getElementById('utils-body');
+  const open = body.classList.toggle('open');
+  btn.classList.toggle('open', open);
+  if (open) renderUtils(boxId);
+}
+
+function openNewSessModal() {
+  document.getElementById('ns-name').value='';
+  openModal('modal-sess');
+  setTimeout(()=>document.getElementById('ns-name').focus(),50);
+}
+
+// ── Plan ──────────────────────────────────────────────────────────────────────
 async function loadPlan(boxId) {
-  const r = await api('GET', `/api/boxes/${boxId}/plan`);
-  if (r.error) { toast('Plan error: '+r.error, 'err'); return; }
-  plans[boxId] = r.plan;
-  boxes[boxId].done_cmds = r.done_cmds || [];
+  const r = await api('GET',`/api/boxes/${boxId}/plan`);
+  if (r.error){toast('Plan error: '+r.error,'err');return;}
+  plans[boxId]      = r.plan;
+  boxes[boxId].done_cmds = r.done_cmds||[];
   renderBoxTabs();
   renderPlanTabs(boxId);
-  const firstId = r.plan.length ? r.plan[0].id : null;
-  if (!currentPlanId || !r.plan.find(s => s.id === currentPlanId)) {
-    currentPlanId = firstId;
-  }
-  if (currentPlanId) renderPlanSection(boxId, currentPlanId);
 }
 
 function renderPlanTabs(boxId) {
   const panel = document.getElementById('plan-panel');
   if (!panel) return;
+  const plan = plans[boxId]||[];
 
-  const plan = plans[boxId] || [];
-  let tabBar  = panel.querySelector('.plan-tabs');
-  if (!tabBar) {
-    tabBar = document.createElement('div');
-    tabBar.className = 'plan-tabs';
-    panel.insertBefore(tabBar, panel.firstChild);
-  }
-  tabBar.innerHTML = '';
-
-  if (plan.length === 0) {
-    panel.innerHTML = `<div class="empty-state">
-      <div class="big">🔍</div>
-      <div>No plan yet — add ports or check cheatsheet paths</div>
-    </div>`;
+  if (!plan.length) {
+    panel.innerHTML='<div class="empty"><div class="big">🔍</div><div>Add ports to build a plan</div></div>';
     return;
   }
 
+  let wrap = panel.querySelector('.plan-tabs-wrap');
+  if (!wrap) {
+    panel.innerHTML='';
+    wrap = document.createElement('div'); wrap.className='plan-tabs-wrap';
+    const tabs = document.createElement('div'); tabs.className='plan-tabs';
+    wrap.appendChild(tabs); panel.appendChild(wrap);
+  }
+
+  const tabs = wrap.querySelector('.plan-tabs');
+  tabs.innerHTML='';
   const box = boxes[boxId];
+
   plan.forEach(section => {
-    const done  = (box.done_cmds||[]).filter(k => k.startsWith(section.id+':')).length;
-    const total = section.commands.length;
+    const total = section.sections?.reduce((a,s)=>a+s.commands.length,0)||0;
+    const done  = (box.done_cmds||[]).filter(k=>k.startsWith(section.id+':')).length;
     const btn   = document.createElement('div');
-    btn.className = 'plan-tab' + (section.id === currentPlanId ? ' active' : '');
-    btn.dataset.sectionId = section.id;
-    btn.innerHTML = `${section.label}
-      <span class="tab-prog ${done>0?'done':''}">${done}/${total}</span>`;
-    btn.onclick = () => {
-      currentPlanId = section.id;
-      panel.querySelectorAll('.plan-tab').forEach(t => t.classList.remove('active'));
+    btn.className='plan-tab'+(section.id===curTab?' active':'');
+    btn.dataset.phase=section.phase;
+    btn.innerHTML=`<span class="phase-dot"></span>${escH(section.label)}<span class="tprog${done?' done':''}">${done}/${total}</span>`;
+    btn.onclick=()=>{
+      curTab=section.id;
+      panel.querySelectorAll('.plan-tab').forEach(t=>t.classList.remove('active'));
       btn.classList.add('active');
-      renderPlanSection(boxId, section.id);
+      renderSection(boxId,section.id);
     };
-    tabBar.appendChild(btn);
+    tabs.appendChild(btn);
   });
+
+  // Auto-select first tab
+  if (!curTab || !plan.find(s=>s.id===curTab)) curTab=plan[0].id;
+  panel.querySelectorAll('.plan-tab').forEach(t=>t.classList.toggle('active',t.textContent.includes(plan.find(s=>s.id===curTab)?.label||'_NONE_')));
+  renderSection(boxId, curTab);
 }
 
-function renderPlanSection(boxId, sectionId) {
+function renderSection(boxId, sectionId) {
   const panel   = document.getElementById('plan-panel');
   if (!panel) return;
-  const plan    = plans[boxId] || [];
-  const section = plan.find(s => s.id === sectionId);
+  const plan    = plans[boxId]||[];
+  const section = plan.find(s=>s.id===sectionId);
   if (!section) return;
   const box     = boxes[boxId];
-  const vars    = box.variables || {};
-  const done    = new Set(box.done_cmds || []);
-  const newSet  = new Set(newCmds.map(c => c.cmd));
+  const vars    = allVars(box);
+  const done    = new Set(box.done_cmds||[]);
 
-  // Remove old scroll area
   let scroll = panel.querySelector('.cmds-scroll');
   if (scroll) scroll.remove();
+  scroll = document.createElement('div'); scroll.className='cmds-scroll';
 
-  scroll = document.createElement('div');
-  scroll.className = 'cmds-scroll';
+  (section.sections||[]).forEach((sec, si) => {
+    const secDone  = sec.commands.filter((_,ci)=>done.has(`${sectionId}:${si}:${ci}`)).length;
+    const hdr = document.createElement('div'); hdr.className='section-header';
+    hdr.innerHTML=`<span>${escH(sec.section)}</span><span class="section-prog">${secDone}/${sec.commands.length}</span>`;
+    scroll.appendChild(hdr);
 
-  section.commands.forEach((cmd, i) => {
-    const key   = `${sectionId}:${i}`;
-    const isDone= done.has(key);
-    const isNew = newSet.has(cmd.cmd);
+    sec.commands.forEach((cmd, ci) => {
+      const key    = `${sectionId}:${si}:${ci}`;
+      const isDone = done.has(key);
+      const row    = document.createElement('div');
+      row.className='cmd-row'+(isDone?' done':'');
+      row.tabIndex=0; row.dataset.key=key; row.dataset.cmd=cmd.cmd;
 
-    const row = document.createElement('div');
-    row.className = `cmd-row${isDone?' is-done':''}${isNew?' is-new':''}`;
-    row.tabIndex  = 0;
-    row.dataset.key = key;
-    row.dataset.cmd = cmd.cmd;
+      const runB = document.createElement('button'); runB.className='cmd-run'; runB.textContent='▶';
+      runB.onclick=e=>{e.stopPropagation();runCmd(boxId,key,cmd.cmd);};
 
-    // Run button
-    const runBtn = document.createElement('button');
-    runBtn.className = 'cmd-run';
-    runBtn.textContent = '▶';
-    runBtn.title = 'Ctrl+Enter to run';
-    runBtn.onclick = e => { e.stopPropagation(); runCmd(boxId, key, cmd.cmd); };
+      const body = document.createElement('div'); body.className='cmd-body';
+      if (cmd.comment){const c=document.createElement('div');c.className='cmd-comment';c.textContent='# '+cmd.comment;body.appendChild(c);}
+      const txt = document.createElement('div'); txt.className='cmd-text';
+      txt.innerHTML=renderVars(cmd.cmd,vars); body.appendChild(txt);
 
-    // Body
-    const body = document.createElement('div');
-    body.className = 'cmd-body';
-    if (cmd.comment) {
-      const cmt = document.createElement('div');
-      cmt.className = 'cmd-comment';
-      cmt.textContent = '# ' + cmd.comment;
-      body.appendChild(cmt);
-    }
-    const txt = document.createElement('div');
-    txt.className = 'cmd-text';
-    txt.innerHTML = renderCmdWithVars(cmd.cmd, vars);
-    body.appendChild(txt);
+      const acts = document.createElement('div'); acts.className='cmd-acts';
+      const cpB  = document.createElement('button'); cpB.className='cmd-btn'; cpB.title='Copy (C)'; cpB.textContent='⎘';
+      cpB.onclick=e=>{e.stopPropagation();copyCmd(cmd.cmd,vars);};
+      const dnB  = document.createElement('button'); dnB.className='cmd-btn'; dnB.title='Toggle done (D)'; dnB.textContent=isDone?'↺':'✓';
+      dnB.onclick=e=>{e.stopPropagation();toggleDone(boxId,key,sectionId);};
+      acts.appendChild(cpB); acts.appendChild(dnB);
 
-    // Lang badge
-    const lang = document.createElement('div');
-    lang.className = 'cmd-lang';
-    lang.textContent = cmd.lang || 'bash';
+      row.appendChild(runB); row.appendChild(body); row.appendChild(acts);
 
-    // Actions
-    const acts = document.createElement('div');
-    acts.className = 'cmd-actions';
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'cmd-act-btn'; copyBtn.title = 'Copy (C)';
-    copyBtn.textContent = '⎘';
-    copyBtn.onclick = e => { e.stopPropagation(); copyCmd(cmd.cmd, vars); };
-
-    const doneBtn = document.createElement('button');
-    doneBtn.className = 'cmd-act-btn'; doneBtn.title = 'Toggle done (D)';
-    doneBtn.textContent = isDone ? '↺' : '✓';
-    doneBtn.onclick = e => { e.stopPropagation(); toggleDone(boxId, key, sectionId); };
-
-    acts.appendChild(copyBtn);
-    acts.appendChild(doneBtn);
-
-    row.appendChild(runBtn);
-    row.appendChild(body);
-    row.appendChild(lang);
-    row.appendChild(acts);
-
-    // Keyboard shortcuts
-    row.addEventListener('keydown', e => {
-      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runCmd(boxId, key, cmd.cmd); }
-      if (e.key === 'c' && !e.ctrlKey && !e.metaKey) copyCmd(cmd.cmd, vars);
-      if (e.key === 'd' && !e.ctrlKey && !e.metaKey) toggleDone(boxId, key, sectionId);
+      row.addEventListener('keydown',e=>{
+        if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();runCmd(boxId,key,cmd.cmd);}
+        if(e.key==='c'&&!e.ctrlKey&&!e.metaKey)copyCmd(cmd.cmd,vars);
+        if(e.key==='d'&&!e.ctrlKey&&!e.metaKey)toggleDone(boxId,key,sectionId);
+      });
+      scroll.appendChild(row);
     });
-
-    scroll.appendChild(row);
   });
 
   panel.appendChild(scroll);
 }
 
-// ─── Command operations ───────────────────────────────────────────────────────
-async function runCmd(boxId, cmdKey, rawCmd) {
+// ── Command ops ───────────────────────────────────────────────────────────────
+async function runCmd(boxId, cmdKey, rawCmd, silent=false) {
   const box = boxes[boxId];
-  if (!box.session) {
-    toast('No screen session assigned — set one in the left panel', 'err');
-    return;
-  }
-  const r = await api('POST', `/api/boxes/${boxId}/run`, {
-    command: rawCmd,
-    cmd_key: cmdKey,
-    session: box.session,
-  });
-  if (r.status === 'ok') {
-    boxes[boxId].done_cmds = boxes[boxId].done_cmds || [];
-    if (!boxes[boxId].done_cmds.includes(cmdKey)) boxes[boxId].done_cmds.push(cmdKey);
-    toast(`→ ${box.session}`, 'ok');
-    renderPlanSection(boxId, currentPlanId);
-    renderPlanTabs(boxId);
-    renderBoxTabs();
+  if (!box.session){toast('No screen session — set one in the left panel','err');return;}
+  const r = await api('POST',`/api/boxes/${boxId}/run`,{command:rawCmd,cmd_key:cmdKey});
+  if (r.status==='ok'){
+    if(!boxes[boxId].done_cmds.includes(cmdKey)) boxes[boxId].done_cmds.push(cmdKey);
+    if(!silent) toast(`→ ${box.session}`,'ok');
+    renderSection(boxId,curTab); renderPlanTabs(boxId); renderBoxTabs();
   } else {
-    toast('Error: ' + (r.error || 'unknown'), 'err');
+    toast('Error: '+(r.error||'unknown'),'err');
   }
 }
 
 function copyCmd(rawCmd, vars) {
-  const subbed = rawCmd.replace(/\{\{(\w+)\}\}/g, (m, k) => vars[k] || m);
-  navigator.clipboard.writeText(subbed).then(() => toast('Copied', 'info'));
+  const s = rawCmd.replace(/\{\{(\w+)\}\}/g,(_,k)=>vars[k]||`{{${k}}}`);
+  navigator.clipboard.writeText(s).then(()=>toast('Copied','info'));
 }
 
-async function toggleDone(boxId, cmdKey, sectionId) {
-  const r = await api('POST', `/api/boxes/${boxId}/done`, { cmd_key: cmdKey });
-  boxes[boxId].done_cmds = r.done_cmds;
-  renderPlanSection(boxId, sectionId || currentPlanId);
-  renderPlanTabs(boxId);
-  renderBoxTabs();
+async function toggleDone(boxId, key, sectionId) {
+  const r = await api('POST',`/api/boxes/${boxId}/done`,{cmd_key:key});
+  boxes[boxId].done_cmds=r.done_cmds;
+  renderSection(boxId,sectionId||curTab);
+  renderPlanTabs(boxId); renderBoxTabs();
 }
 
-// ─── Var rendering ────────────────────────────────────────────────────────────
-function renderCmdWithVars(cmd, vars) {
-  return escHtml(cmd).replace(/\{\{(\w+)\}\}/g, (match, k) => {
-    const val = vars[k];
-    if (!val) return `<span class="ph ph-miss">${match}</span>`;
-    return `<span class="ph ph-set" title="${escHtml(k)}=${escHtml(val)}">${escHtml(val)}</span>`;
+// ── Variable helpers ──────────────────────────────────────────────────────────
+function allVars(box) {
+  return {...(box.variables||{}), ...(box.custom_vars||{})};
+}
+
+function renderVars(cmd, vars) {
+  return escH(cmd).replace(/\{\{(\w+)\}\}/g,(_,k)=>{
+    const v=vars[k];
+    return v?`<span class="ph set" title="${k}=${escH(v)}">${escH(v)}</span>`
+            :`<span class="ph miss">{{${k}}}</span>`;
   });
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-async function updateBox(boxId, patch) {
-  const r = await api('PATCH', `/api/boxes/${boxId}`, patch);
-  if (r.box) boxes[boxId] = { ...boxes[boxId], ...r.box };
+// ── Boxes ─────────────────────────────────────────────────────────────────────
+function openModal(id){
+  if(id==='modal-box') refreshSessions();
+  document.getElementById(id).classList.add('open');
+  const inp=document.querySelector(`#${id} input`);
+  if(inp) setTimeout(()=>inp.focus(),50);
+}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+async function createBox() {
+  const name    = document.getElementById('nb-name').value.trim();
+  const os      = document.getElementById('nb-os').value;
+  const session = document.getElementById('nb-sess').value;
+  if (!name){toast('Name required','err');return;}
+  const r = await api('POST','/api/boxes',{name,os,session});
+  if (r.error){toast(r.error,'err');return;}
+  boxes[r.box.id]=r.box;
+  closeModal('modal-box');
+  renderBoxTabs();
+  switchBox(r.box.id);
+}
+
+async function patchBox(boxId, patch) {
+  const r = await api('PATCH',`/api/boxes/${boxId}`,patch);
+  if (r.box) boxes[boxId]={...boxes[boxId],...r.box};
   return r;
 }
 
-async function api(method, url, body) {
-  try {
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const r = await fetch(url, opts);
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(method,url,body){
+  try{
+    const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
     return await r.json();
-  } catch (e) {
-    return { error: e.message };
-  }
+  }catch(e){return {error:e.message};}
 }
 
-function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+let _tt;
+function toast(msg,type='info'){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className=`toast ${type} show`;
+  clearTimeout(_tt); _tt=setTimeout(()=>el.classList.remove('show'),3000);
 }
 
-let _toastTimer;
-function toast(msg, type = 'info') {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = `toast ${type} show`;
-  clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
-}
-
-function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
-  if (e.key === 'Enter' && document.getElementById('modal-new-box').classList.contains('open')) createBox();
-  if (e.key === 'Enter' && document.getElementById('modal-new-session').classList.contains('open')) createSession();
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') document.querySelectorAll('.modal-bg.open').forEach(m=>m.classList.remove('open'));
+  if(e.key==='Enter'&&document.getElementById('modal-box').classList.contains('open')) createBox();
+  if(e.key==='Enter'&&document.getElementById('modal-sess').classList.contains('open')) createSession();
 });
 
 init();
