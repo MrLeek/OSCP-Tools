@@ -287,8 +287,13 @@ def git_pull():
 def get_screen_sessions():
     try:
         r = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
-        return [m.group(1) for l in r.stdout.splitlines()
-                if (m := re.search(r'(\d+\.\S+)', l))]
+        sessions = []
+        for line in r.stdout.splitlines():
+            # Only match genuine session lines: PID.name (timestamp) (Detached|Attached)
+            m = re.search(r'(\d+\.\S+)\s+\([^)]+\)\s+\((Detached|Attached)\)', line)
+            if m:
+                sessions.append(m.group(1))
+        return sessions
     except Exception:
         return []
 
