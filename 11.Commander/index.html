@@ -141,6 +141,8 @@ body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospa
 .sec-prog{color:var(--muted);letter-spacing:0;text-transform:none;}
 .crow{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);transition:background .1s;}
 .crow:hover:not(.done){background:var(--bg3);border-color:#3d444d;}
+.crow:focus{outline:none;border-color:var(--blue);background:var(--bg3);box-shadow:inset 3px 0 0 var(--blue);}
+.crow:focus .ctxt{color:#fff;}
 .crow.done{opacity:.35;}
 .crow.done .ctxt{text-decoration:line-through;color:var(--muted);}
 .crun{flex-shrink:0;width:26px;background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;border-radius:var(--r) 0 0 var(--r);}
@@ -796,10 +798,24 @@ function renderSection(boxId, sectionId) {
 
   const cmds = document.createElement('div'); cmds.className = 'cmds';
 
+  let lastWasPort = false;
   (section.sections || []).forEach((sec, si) => {
+    const isPortSec = !!sec.port_label;
+    // Insert divider when transitioning from standard recon to port-specific
+    if (isPortSec && !lastWasPort) {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 2px 4px;';
+      div.innerHTML = '<div style="flex:1;height:1px;background:var(--border)"></div>' +
+        '<span style="font-size:9px;color:var(--blue);text-transform:uppercase;letter-spacing:1.5px;white-space:nowrap;">Port-Specific</span>' +
+        '<div style="flex:1;height:1px;background:var(--border)"></div>';
+      cmds.appendChild(div);
+    }
+    lastWasPort = isPortSec;
     const secDone = sec.commands.filter((_, ci) => done.has(`${sectionId}:${si}:${ci}`)).length;
     const hdr = document.createElement('div'); hdr.className = 'sec-hdr';
-    hdr.innerHTML = `<span>${esc(sec.section)}</span><span class="sec-prog">${secDone}/${sec.commands.length}</span>`;
+    // For port sections, prefix the section header with the service name
+    const secLabel = isPortSec ? `${sec.port_label}: ${sec.section}` : sec.section;
+    hdr.innerHTML = `<span>${esc(secLabel)}</span><span class="sec-prog">${secDone}/${sec.commands.length}</span>`;
     cmds.appendChild(hdr);
 
     sec.commands.forEach((cmd, ci) => {
@@ -845,7 +861,10 @@ function renderSection(boxId, sectionId) {
 // ── Command ops ────────────────────────────────────────────────────────────
 async function runCmd(boxId, cmdKey, rawCmd) {
   const box = boxes[boxId];
-  if (!box?.session) { toast('No screen session — set one in the left panel', 'err'); return; }
+  if (!box?.session) {
+    toast('No screen session assigned — pick one in the left panel', 'err');
+    return;
+  }
   const r = await api('POST', `/api/boxes/${boxId}/run`, { command: rawCmd, cmd_key: cmdKey });
   if (r.status === 'ok') {
     if (!boxes[boxId].done_cmds.includes(cmdKey)) boxes[boxId].done_cmds.push(cmdKey);
@@ -854,7 +873,13 @@ async function runCmd(boxId, cmdKey, rawCmd) {
     renderPlanTabs(boxId);
     renderBoxTabs();
   } else {
-    toast('Error: ' + (r.error || 'unknown'), 'err');
+    const msg = r.error || 'unknown error';
+    const isDeadSession = msg.includes('No such') || msg.includes('session') || msg.includes('screen');
+    if (isDeadSession) {
+      toast(`Screen session '${box.session}' not found — run: screen -ls`, 'err');
+    } else {
+      toast(`Send failed: ${msg}`, 'err');
+    }
   }
 }
 
