@@ -373,6 +373,7 @@ async function switchBox(boxId) {
   utilsOpen = false;
   renderBoxTabs();
   buildLayout();
+  buildUtilsOverlay();
   await renderLeft(boxId);
   await loadPlan(boxId);
 }
@@ -395,24 +396,26 @@ function buildLayout() {
   // Always reset plan-col to loading state when switching box
   const col = document.getElementById('plan-col');
   if (col) col.innerHTML = '<div class="cmds" style="align-items:center;justify-content:center;"><span style="color:var(--dim)">Loading plan…</span></div>';
+}
 
-  // Add FAB + popup if not present
+// Called once after first buildLayout — injects FAB and popup into #layout
+function buildUtilsOverlay() {
   const layout = document.getElementById('layout');
-  if (layout && !document.getElementById('utils-fab')) {
-    const fab = document.createElement('button');
-    fab.id = 'utils-fab'; fab.className = 'utils-fab visible';
-    fab.innerHTML = '🔧 Utils';
-    fab.onclick = () => toggleUtils();
-    layout.appendChild(fab);
+  if (!layout || document.getElementById('utils-fab')) return;
 
-    const popup = document.createElement('div');
-    popup.id = 'utils-popup'; popup.className = 'utils-popup';
-    popup.innerHTML = '<div class="utils-popup-hdr">' +
-      '<span class="utils-popup-title" id="utils-popup-title">Utils</span>' +
-      '<button class="utils-close" onclick="toggleUtils()">✕</button></div>' +
-      '<div class="utils-popup-body" id="utils-popup-body"></div>';
-    layout.appendChild(popup);
-  }
+  const fab = document.createElement('button');
+  fab.id = 'utils-fab'; fab.className = 'utils-fab visible';
+  fab.innerHTML = '🔧 Utils';
+  fab.onclick = () => toggleUtils();
+  layout.appendChild(fab);
+
+  const popup = document.createElement('div');
+  popup.id = 'utils-popup'; popup.className = 'utils-popup';
+  popup.innerHTML = '<div class="utils-popup-hdr">' +
+    '<span class="utils-popup-title" id="utils-popup-title">Utils</span>' +
+    '<button class="utils-close" onclick="toggleUtils()">✕</button></div>' +
+    '<div class="utils-popup-body" id="utils-popup-body"></div>';
+  layout.appendChild(popup);
 }
 
 // ── Left panel ─────────────────────────────────────────────────────────────
