@@ -92,20 +92,23 @@ body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospa
 .extras-sel{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:3px 5px;border-radius:3px;outline:none;margin-bottom:4px;}
 .extras-sel:focus{border-color:var(--yellow);}
 
-/* utils collapsible */
-.utils-section{border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;max-height:260px;}
-.utils-toggle{width:100%;background:var(--bg3);border:none;color:var(--dim);font-family:inherit;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
-.utils-toggle:hover{color:var(--text);}
-.utils-arrow{transition:transform .2s;}
-.utils-arrow.open{transform:rotate(180deg);}
-.utils-body{display:none;overflow-y:auto;flex:1;}
-.utils-body.open{display:block;}
-.utils-shdr{padding:4px 10px 2px;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--bg3);position:sticky;top:0;}
-.utils-row{display:flex;align-items:stretch;border-bottom:1px solid #1c2333;padding:3px 0 3px 10px;}
-.utils-txt{flex:1;font-size:11px;color:var(--text);word-break:break-all;white-space:pre-wrap;padding-right:4px;line-height:1.5;}
-.utils-cp{flex-shrink:0;width:22px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:10px;}
+/* utils bottom popup */
+.utils-fab{position:absolute;bottom:18px;right:18px;background:var(--bg3);border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:11px;padding:6px 14px;border-radius:20px;cursor:pointer;z-index:50;display:none;gap:6px;align-items:center;}
+.utils-fab:hover{border-color:var(--border-hi);color:var(--text);}
+.utils-fab.visible{display:flex;}
+.utils-popup{position:absolute;bottom:0;left:0;right:0;background:var(--bg2);border-top:2px solid var(--border-hi);z-index:100;display:none;flex-direction:column;max-height:55%;}
+.utils-popup.open{display:flex;}
+.utils-popup-hdr{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;background:var(--bg3);border-bottom:1px solid var(--border);flex-shrink:0;}
+.utils-popup-title{font-size:11px;color:var(--blue);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+.utils-close{background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;line-height:1;padding:0;}
+.utils-close:hover{color:var(--text);}
+.utils-popup-body{overflow-y:auto;flex:1;}
+.utils-shdr{padding:5px 14px 2px;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--bg3);position:sticky;top:0;}
+.utils-row{display:flex;align-items:stretch;border-bottom:1px solid #1c2333;padding:3px 0 3px 14px;}
+.utils-txt{flex:1;font-size:12px;color:var(--text);word-break:break-all;white-space:pre-wrap;padding-right:4px;line-height:1.6;}
+.utils-cp{flex-shrink:0;width:26px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:11px;}
 .utils-cp:hover{color:var(--blue);}
-.utils-run{flex-shrink:0;width:24px;background:transparent;border:none;border-left:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;}
+.utils-run{flex-shrink:0;width:28px;background:transparent;border:none;border-left:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center;}
 .utils-run:hover{background:var(--accent);color:#fff;}
 
 /* buttons */
@@ -369,33 +372,47 @@ async function switchBox(boxId) {
   curTab = null;
   utilsOpen = false;
   renderBoxTabs();
-  buildLayout();       // build DOM synchronously first
-  renderLeft(boxId);   // populate left panel
-  await loadPlan(boxId); // then load plan
+  buildLayout();
+  await renderLeft(boxId);
+  await loadPlan(boxId);
 }
 
-// Build the two-column layout if not already present
+// Build two-column layout; always reset plan-col on each box switch
 function buildLayout() {
   const main = document.getElementById('main');
-  if (document.getElementById('layout')) return;
+  if (!document.getElementById('layout')) {
+    main.innerHTML = '';
+    const layout = document.createElement('div');
+    layout.id = 'layout';
+    layout.style.cssText = 'display:flex;flex:1;overflow:hidden;width:100%;position:relative;';
+    const left = document.createElement('div');
+    left.id = 'left-col'; left.className = 'left';
+    const plan = document.createElement('div');
+    plan.id = 'plan-col'; plan.className = 'plan';
+    layout.appendChild(left); layout.appendChild(plan);
+    main.appendChild(layout);
+  }
+  // Always reset plan-col to loading state when switching box
+  const col = document.getElementById('plan-col');
+  if (col) col.innerHTML = '<div class="cmds" style="align-items:center;justify-content:center;"><span style="color:var(--dim)">Loading plan…</span></div>';
 
-  main.innerHTML = '';
-  const layout = document.createElement('div');
-  layout.id = 'layout';
-  layout.style.cssText = 'display:flex;flex:1;overflow:hidden;width:100%;';
+  // Add FAB + popup if not present
+  const layout = document.getElementById('layout');
+  if (layout && !document.getElementById('utils-fab')) {
+    const fab = document.createElement('button');
+    fab.id = 'utils-fab'; fab.className = 'utils-fab visible';
+    fab.innerHTML = '🔧 Utils';
+    fab.onclick = () => toggleUtils();
+    layout.appendChild(fab);
 
-  const left = document.createElement('div');
-  left.id = 'left-col';
-  left.className = 'left';
-
-  const plan = document.createElement('div');
-  plan.id = 'plan-col';
-  plan.className = 'plan';
-  plan.innerHTML = '<div class="cmds" style="align-items:center;justify-content:center;"><span style="color:var(--dim)">Select a box to build plan</span></div>';
-
-  layout.appendChild(left);
-  layout.appendChild(plan);
-  main.appendChild(layout);
+    const popup = document.createElement('div');
+    popup.id = 'utils-popup'; popup.className = 'utils-popup';
+    popup.innerHTML = '<div class="utils-popup-hdr">' +
+      '<span class="utils-popup-title" id="utils-popup-title">Utils</span>' +
+      '<button class="utils-close" onclick="toggleUtils()">✕</button></div>' +
+      '<div class="utils-popup-body" id="utils-popup-body"></div>';
+    layout.appendChild(popup);
+  }
 }
 
 // ── Left panel ─────────────────────────────────────────────────────────────
@@ -482,13 +499,6 @@ async function renderLeft(boxId) {
       </div>
     </div>
 
-    <div class="utils-section" id="utils-section">
-      <button class="utils-toggle" id="utils-toggle" onclick="toggleUtils('${boxId}')">
-        <span>🔧 Utils (${box.os === 'linux' ? 'Linux' : 'Windows'})</span>
-        <span class="utils-arrow" id="utils-arrow">▾</span>
-      </button>
-      <div class="utils-body" id="utils-body"></div>
-    </div>
   `;
 
   // Wire variable input events (use event delegation on the scroll container)
@@ -661,21 +671,24 @@ function clearVars(boxId) {
 }
 
 // ── Utils ──────────────────────────────────────────────────────────────────
-function toggleUtils(boxId) {
+function toggleUtils() {
   utilsOpen = !utilsOpen;
-  const body  = document.getElementById('utils-body');
-  const arrow = document.getElementById('utils-arrow');
-  if (!body || !arrow) return;
-  body.classList.toggle('open', utilsOpen);
-  arrow.classList.toggle('open', utilsOpen);
-  if (utilsOpen) renderUtils(boxId);
+  const popup = document.getElementById('utils-popup');
+  const fab   = document.getElementById('utils-fab');
+  if (!popup) return;
+  popup.classList.toggle('open', utilsOpen);
+  if (fab) fab.style.display = utilsOpen ? 'none' : 'flex';
+  if (utilsOpen) renderUtils(curBox);
 }
 
 function renderUtils(boxId) {
-  const body = document.getElementById('utils-body');
+  const body = document.getElementById('utils-popup-body');
+  const title = document.getElementById('utils-popup-title');
   if (!body) return;
   const box  = boxes[boxId] || {};
   const vars = allVars(box);
+  const osLabel = box.os === 'linux' ? 'Linux' : 'Windows';
+  if (title) title.textContent = `Utils — ${osLabel}`;
   body.innerHTML = '';
   (utilsSecs || []).forEach(sec => {
     const hdr = document.createElement('div');
@@ -684,7 +697,7 @@ function renderUtils(boxId) {
       const row = document.createElement('div'); row.className = 'utils-row';
       const txt = document.createElement('div'); txt.className = 'utils-txt';
       txt.innerHTML = renderVars(cmd.cmd, vars);
-      const cp = document.createElement('button'); cp.className = 'utils-cp'; cp.textContent = '⎘';
+      const cp  = document.createElement('button'); cp.className = 'utils-cp'; cp.textContent = '⎘';
       cp.title = 'Copy'; cp.onclick = () => copyCmd(cmd.cmd, vars);
       const run = document.createElement('button'); run.className = 'utils-run'; run.textContent = '▶';
       run.title = 'Send to screen'; run.onclick = () => runCmd(boxId, `utils:${i}`, cmd.cmd);
@@ -738,12 +751,6 @@ function renderPlanTabs(boxId) {
 
 function activateTab(boxId, sectionId) {
   curTab = sectionId;
-  document.querySelectorAll('.ptab').forEach(t => {
-    t.classList.toggle('active', t.textContent.includes(
-      (plans[boxId] || []).find(s => s.id === sectionId)?.label || '__none__'
-    ));
-  });
-  // Simpler: just toggle active by re-querying
   document.querySelectorAll('.ptab').forEach((t, i) => {
     t.classList.toggle('active', (plans[boxId] || [])[i]?.id === sectionId);
   });
@@ -893,7 +900,10 @@ async function createBox() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') document.querySelectorAll('.mbg.open').forEach(m => m.classList.remove('open'));
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.mbg.open').forEach(m => m.classList.remove('open'));
+    if (utilsOpen) toggleUtils();
+  }
   if (e.key === 'Enter' && document.getElementById('mbox').classList.contains('open')) createBox();
   if (e.key === 'Enter' && document.getElementById('msess').classList.contains('open')) createSession();
 });
