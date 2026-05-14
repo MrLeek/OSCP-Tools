@@ -237,7 +237,7 @@ kbd{background:var(--bg3);border:1px solid var(--border);border-radius:2px;paddi
 <!-- New session modal -->
 <div class="mbg" id="msess">
   <div class="modal">
-    <h3>New Screen Session</h3>
+    <h3>New tmux Session</h3>
     <label>Session name<input id="ns-name" placeholder="box1" maxlength="32"></label>
     <div class="mbtns">
       <button class="bcancel" onclick="closeModal('msess')">Cancel</button>
@@ -304,34 +304,19 @@ async function refreshSessions() {
 }
 
 function updateSessionSelects() {
-  // Deduplicate sessions by short name, keep most recent (highest PID)
-  const seen = {};
-  sessions.forEach(s => {
-    const short = s.split('.').slice(1).join('.');
-    const pid   = parseInt(s.split('.')[0]);
-    if (!seen[short] || pid > parseInt(seen[short].split('.')[0])) seen[short] = s;
-  });
-  const deduped = Object.values(seen);
+  // tmux sessions are plain names (e.g. 'box1') - no PID prefix
+  const deduped = [...new Set(sessions)];
 
-  // All session dropdowns in left panel
   document.querySelectorAll('.sess-sel').forEach(sel => {
     const v = sel.value;
     sel.innerHTML = '<option value="">— none —</option>';
-    deduped.forEach(s => {
-      const short = s.split('.').slice(1).join('.');
-      sel.appendChild(makeOpt(s, short));
-    });
-    // Restore previous selection if still valid
+    deduped.forEach(s => sel.appendChild(makeOpt(s, s)));
     if (v && deduped.includes(v)) sel.value = v;
   });
-  // Modal
   const ms = document.getElementById('nb-sess');
   if (ms) {
     ms.innerHTML = '<option value="">— none yet —</option>';
-    deduped.forEach(s => {
-      const short = s.split('.').slice(1).join('.');
-      ms.appendChild(makeOpt(s, short));
-    });
+    deduped.forEach(s => ms.appendChild(makeOpt(s, s)));
   }
 }
 
@@ -350,12 +335,11 @@ async function createSession() {
   toast(`Session '${name}' created`, 'ok');
   // Auto-assign to current box if it has none
   if (curBox && !boxes[curBox].session) {
-    const match = sessions.find(s => s.endsWith('.' + name)) || name;
-    boxes[curBox].session = match;
-    await api('PATCH', `/api/boxes/${curBox}`, { session: match });
+    boxes[curBox].session = name;
+    await api('PATCH', `/api/boxes/${curBox}`, { session: name });
     updateSessionSelects();
     const sel = document.querySelector('.sess-sel');
-    if (sel) sel.value = match;
+    if (sel) sel.value = name;
   }
 }
 
@@ -469,7 +453,7 @@ async function renderLeft(boxId) {
 
   left.innerHTML = `
     <div class="ls">
-      <div class="ls-title">Screen Session
+      <div class="ls-title">tmux Session
         <button class="lbtn" onclick="openNewSess()">+ new</button>
       </div>
       <div class="ls-body">
@@ -733,9 +717,7 @@ function renderUtils(boxId) {
 
 // ── Plan ───────────────────────────────────────────────────────────────────
 async function loadPlan(boxId) {
-  console.log('[loadPlan] fetching plan for', boxId);
   const r = await api('GET', `/api/boxes/${boxId}/plan`);
-  console.log('[loadPlan] response:', r);
   if (r.error) { toast('Plan error: ' + r.error, 'err'); return; }
   plans[boxId] = r.plan || [];
   boxes[boxId].done_cmds = r.done_cmds || [];
@@ -745,8 +727,7 @@ async function loadPlan(boxId) {
 
 function renderPlanTabs(boxId) {
   const col = document.getElementById('plan-col');
-  console.log('[renderPlanTabs] col=', col, 'plan length=', (plans[boxId]||[]).length);
-  if (!col) { console.error('[renderPlanTabs] plan-col not found!'); return; }
+  if (!col) return;
   const plan = plans[boxId] || [];
 
   if (!plan.length) {
