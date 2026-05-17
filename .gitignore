@@ -2,3 +2,4 @@
 *.zip
 wordlists/
 payloads/
+__pycache__/
