@@ -86,6 +86,7 @@ class EnumState:
     # Cross-phase data (LDAP → Kerberos)
     kerberoastable: list = field(default_factory=list)   # [{"user": ..., "spn": ...}]
     asreproastable: list = field(default_factory=list)   # ["user1", "user2"]
+    admincnt_users: list = field(default_factory=list)   # non-builtin adminCount=1 users
 
     # Findings accumulator
     findings: list = field(default_factory=list)
@@ -499,21 +500,18 @@ def phase_smb(s: EnumState):
         if re.search(r"complexity.*\b0\b|complexity.*(none|false)", text_lower):
             s.add_finding("No password complexity enforced")
 
-    # Privileges
-    sub("Session privileges (enumprivs)")
+    # Privileges — display only, no findings generated.
+    # enumprivs against a DC returns the DC's system privilege set, not the
+    # authenticated user's token privileges. Flagging these as findings would
+    # falsely imply the current user has elevated access when they don't.
+    # Run 'whoami /priv' post-exploitation on a non-DC host for meaningful output.
+    sub("Session privileges (enumprivs) — informational only")
     out = rpc(s, "enumprivs")
     if out:
         privs = re.findall(r"Se\w+", out)
         s.priv_count = len(privs)
         print_table(["Privilege Name"], [[p] for p in privs])
-        ok(f"{s.priv_count} privileges in current session")
-        dangerous = {
-            "SeDebugPrivilege", "SeImpersonatePrivilege", "SeTakeOwnershipPrivilege",
-            "SeLoadDriverPrivilege", "SeBackupPrivilege", "SeRestorePrivilege",
-        }
-        for p in privs:
-            if p in dangerous:
-                s.add_finding(f"Dangerous privilege held: {p}")
+        info(f"{s.priv_count} privileges listed (DC system context — not user token)")
 
     # Shares
     sub("Network shares (netshareenumall)")
@@ -637,9 +635,18 @@ def phase_ldap(s: EnumState):
                 if _is_interesting_description(desc):
                     s.add_finding(f"Creds in description — '{sam}': {desc}")
                 # 66048 = NORMAL_ACCOUNT|DONT_EXPIRE_PASSWORD
-                # Only flag non-machine, non-krbtgt accounts (machine accounts end in $)
-                if uac in ("66048", "66080") and not sam.endswith("$") and sam.lower() != "krbtgt":
-                    s.add_finding(f"Password never expires — '{sam}' (UAC={uac})")
+                # Only flag if: non-machine, non-krbtgt, non-Administrator AND adminCount=1.
+                # Without the adminCount gate this fires on every standard user and is noise.
+                # Note: admincnt_users is populated by the adminCount LDAP query below —
+                # if running --phase ldap in isolation the cross-reference still works because
+                # both queries run in the same phase. If UAC runs before adminCount the list
+                # will be empty; accept this as a minor ordering trade-off.
+                _skip_uac = {"krbtgt", "administrator"}
+                if (uac in ("66048", "66080")
+                        and not sam.endswith("$")
+                        and sam.lower() not in _skip_uac
+                        and sam.lower() in s.admincnt_users):
+                    s.add_finding(f"Password never expires — '{sam}' (AdminCount=1, UAC={uac})")
         print_table(["sAMAccountName", "CN", "UAC", "Description"], rows)
         ok(f"Found {len(rows)} user objects via LDAP")
 
@@ -659,6 +666,9 @@ def phase_ldap(s: EnumState):
                 if sam.endswith("$"):
                     # Machine accounts have 120-char random passwords — not crackable
                     s.add_finding(f"KERBEROASTABLE (machine acct — skip): {sam} — SPN: {spn}")
+                elif sam.lower() == "krbtgt":
+                    # krbtgt is disabled and its SPN is a built-in — not a real target
+                    s.add_finding(f"KERBEROASTABLE (skip — krbtgt built-in): {sam} — SPN: {spn}")
                 else:
                     s.add_finding(f"KERBEROASTABLE (crack me): {sam} — SPN: {spn}")
         s.spn_count = len(rows)
@@ -702,6 +712,7 @@ def phase_ldap(s: EnumState):
                 # Only flag as a finding if it's a user account, not a well-known
                 # built-in group (Administrators, Print Operators, Replicator, etc.)
                 if _is_notable_admincnt(sam, dn):
+                    s.admincnt_users.append(sam.lower())
                     s.add_finding(f"AdminCount=1 user account (privileged group member): {sam}")
         if rows:
             print_table(["Account", "Distinguished Name"], rows)
@@ -969,8 +980,15 @@ def print_summary(s: EnumState):
     log(f"   └─ DNS records found    : {s.dns_host_count}")
     log()
     if s.findings:
-        log(C.yellow(C.bold(f"  Notable Findings ({len(s.findings)}):")))
+        # Deduplicate while preserving insertion order
+        seen = set()
+        deduped = []
         for f in s.findings:
+            if f not in seen:
+                seen.add(f)
+                deduped.append(f)
+        log(C.yellow(C.bold(f"  Notable Findings ({len(deduped)}):")))
+        for f in deduped:
             log(C.yellow(f"    [!] {f}"))
     else:
         log(C.dim("  No notable findings flagged."))
