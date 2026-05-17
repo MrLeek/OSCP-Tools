@@ -609,6 +609,25 @@ def phase_ldap(s: EnumState):
     if not s.domain and inferred_base:
         s.domain = inferred_base  # ldap_run uses s.base_dn which reads s.domain
 
+    # ── AdminCount=1 ──────────────────────────────────────────
+    sub("High-value accounts (adminCount=1)")
+    out = ldap_run(s, "(adminCount=1)", "sAMAccountName distinguishedName")
+    if out:
+        records = parse_ldap_records(out, ["sAMAccountName", "distinguishedname"])
+        rows = []
+        for r in records:
+            sam = r.get("samaccountname", "")
+            dn  = r.get("distinguishedname", "")
+            if sam:
+                rows.append([sam, dn])
+                # Only flag as a finding if it's a user account, not a well-known
+                # built-in group (Administrators, Print Operators, Replicator, etc.)
+                if _is_notable_admincnt(sam, dn):
+                    s.admincnt_users.append(sam.lower())
+                    s.add_finding(f"AdminCount=1 user account (privileged group member): {sam}")
+        if rows:
+            print_table(["Account", "Distinguished Name"], rows)
+
     # ── All users ─────────────────────────────────────────────
     sub("All domain users (objectClass=user)")
     out = ldap_run(s, "(objectClass=user)",
@@ -626,12 +645,8 @@ def phase_ldap(s: EnumState):
                 if _is_interesting_description(desc):
                     s.add_finding(f"Creds in description — '{sam}': {desc}")
                 # 66048 = NORMAL_ACCOUNT|DONT_EXPIRE_PASSWORD
-                # Only flag if: non-machine, non-krbtgt, non-Administrator AND adminCount=1.
-                # Without the adminCount gate this fires on every standard user and is noise.
-                # Note: admincnt_users is populated by the adminCount LDAP query below —
-                # if running --phase ldap in isolation the cross-reference still works because
-                # both queries run in the same phase. If UAC runs before adminCount the list
-                # will be empty; accept this as a minor ordering trade-off.
+                # Gate on adminCount=1 so this only fires for genuinely high-value accounts.
+                # admincnt_users is populated by the adminCount query which now runs first.
                 _skip_uac = {"krbtgt", "administrator"}
                 if (uac in ("66048", "66080")
                         and not sam.endswith("$")
@@ -654,14 +669,11 @@ def phase_ldap(s: EnumState):
             if sam:
                 rows.append([sam, spn])
                 s.kerberoastable.append({"user": sam, "spn": spn})
-                if sam.endswith("$"):
-                    # Machine accounts have 120-char random passwords — not crackable
-                    s.add_finding(f"KERBEROASTABLE (machine acct — skip): {sam} — SPN: {spn}")
-                elif sam.lower() == "krbtgt":
-                    # krbtgt is disabled and its SPN is a built-in — not a real target
-                    s.add_finding(f"KERBEROASTABLE (skip — krbtgt built-in): {sam} — SPN: {spn}")
-                else:
-                    s.add_finding(f"KERBEROASTABLE (crack me): {sam} — SPN: {spn}")
+                # Only generate a finding for real user SPNs — machine accounts
+                # ($) have 120-char random passwords and krbtgt is a built-in.
+                # Both are visible in the table above; no finding needed.
+                if not sam.endswith("$") and sam.lower() != "krbtgt":
+                    s.add_finding(f"KERBEROASTABLE user SPN (crack me): {sam} — SPN: {spn}")
         s.spn_count = len(rows)
         if rows:
             print_table(["Account", "SPN"], rows)
@@ -688,25 +700,6 @@ def phase_ldap(s: EnumState):
             log(f"  {C.red(f'[!] {s.asrep_count} AS-REP roastable account(s) — crack with: hashcat -m 18200')}")
         else:
             info("No AS-REP roastable accounts found.")
-
-    # ── AdminCount=1 ──────────────────────────────────────────
-    sub("High-value accounts (adminCount=1)")
-    out = ldap_run(s, "(adminCount=1)", "sAMAccountName distinguishedName")
-    if out:
-        records = parse_ldap_records(out, ["sAMAccountName", "distinguishedname"])
-        rows = []
-        for r in records:
-            sam = r.get("samaccountname", "")
-            dn  = r.get("distinguishedname", "")
-            if sam:
-                rows.append([sam, dn])
-                # Only flag as a finding if it's a user account, not a well-known
-                # built-in group (Administrators, Print Operators, Replicator, etc.)
-                if _is_notable_admincnt(sam, dn):
-                    s.admincnt_users.append(sam.lower())
-                    s.add_finding(f"AdminCount=1 user account (privileged group member): {sam}")
-        if rows:
-            print_table(["Account", "Distinguished Name"], rows)
 
     # ── Domain groups ─────────────────────────────────────────
     sub("Domain groups (objectClass=group)")
