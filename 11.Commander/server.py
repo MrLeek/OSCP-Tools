@@ -26,26 +26,33 @@ CORS(app)
 boxes      = {}
 git_status = {'last_pull': None, 'changed_files': [], 'new_cmds': [], 'error': None}
 
+# Global variables - set once, apply to all boxes (per-box overrides if conflict)
+global_vars = {}
+
+GLOBAL_VAR_DEFS = [
+    {'key': 'KALI',             'desc': 'Kali IP address'},
+    {'key': 'KALI_UPLOAD_PORT', 'desc': 'File upload/HTTP server port (consistent)'},
+    {'key': 'DOMAIN',           'desc': 'AD domain name (e.g. corp.com)'},
+    {'key': 'DC_IP',            'desc': 'Domain controller IP'},
+    {'key': 'DC_HOSTNAME',      'desc': 'DC hostname (e.g. DC01)'},
+    {'key': 'BASE_DN',          'desc': 'LDAP base DN (e.g. DC=corp,DC=com)'},
+]
+
 # ── Variable definitions ──────────────────────────────────────────────────────
 COMMON_VARS = [
-    {'key': 'TARGET',      'desc': 'Target IP address'},
-    {'key': 'KALI',        'desc': 'Kali IP address'},
-    {'key': 'KALI_PORT',   'desc': 'Listener / HTTP server port'},
-    {'key': 'DOMAIN',      'desc': 'Domain name (e.g. corp.com)'},
-    {'key': 'USER',        'desc': 'Username on target'},
-    {'key': 'PASS',        'desc': 'Password on target'},
-    {'key': 'FILENAME',    'desc': 'File to transfer'},
-    {'key': 'PORTS',       'desc': 'Open ports for nmap (comma-separated)'},
-    {'key': 'SHARE',       'desc': 'SMB share name'},
-    {'key': 'KEY_FILE',    'desc': 'SSH private key path'},
+    {'key': 'TARGET',          'desc': 'Target IP address'},
+    {'key': 'KALI_REV_PORT',   'desc': 'Reverse shell listener port (changes per box)'},
+    {'key': 'USER',            'desc': 'Username on target'},
+    {'key': 'PASS',            'desc': 'Password on target'},
+    {'key': 'FILENAME',        'desc': 'File to transfer'},
+    {'key': 'PORTS',           'desc': 'Open ports for nmap (comma-separated)'},
+    {'key': 'SHARE',           'desc': 'SMB share name'},
+    {'key': 'KEY_FILE',        'desc': 'SSH private key path'},
 ]
 AD_VARS = [
-    {'key': 'DC_IP',       'desc': 'Domain controller IP'},
-    {'key': 'DC_HOSTNAME', 'desc': 'DC hostname (e.g. DC01)'},
-    {'key': 'BASE_DN',     'desc': 'LDAP base DN (e.g. DC=corp,DC=com)'},
-    {'key': 'DOMAIN_SID',  'desc': 'Domain SID'},
-    {'key': 'NTLM_HASH',   'desc': 'NTLM hash'},
-    {'key': 'KRBTGT_HASH', 'desc': 'krbtgt NTLM hash (post-root)'},
+    {'key': 'DOMAIN_SID',      'desc': 'Domain SID'},
+    {'key': 'NTLM_HASH',       'desc': 'NTLM hash'},
+    {'key': 'KRBTGT_HASH',     'desc': 'krbtgt NTLM hash (post-root)'},
 ]
 EXTRA_VARS = [
     {'key': 'SUBNET',         'desc': 'Target subnet (e.g. 192.168.1)'},
@@ -176,7 +183,19 @@ def parse_command_file(filepath):
             else:
                 current_comment = inner
         else:
-            current_commands.append({'cmd': s, 'comment': current_comment})
+            interpreter = None
+            cmd_text = s
+            if s.startswith('#!cmd '):
+                interpreter = 'cmd'
+                cmd_text = s[6:].strip()
+            elif s.startswith('#!ps '):
+                interpreter = 'ps'
+                cmd_text = s[5:].strip()
+            current_commands.append({
+                'cmd': cmd_text,
+                'comment': current_comment,
+                'interpreter': interpreter,
+            })
             current_comment = None
     if current_commands:
         sections.append({'section': current_section, 'commands': current_commands})
@@ -307,8 +326,10 @@ def send_to_screen(session, command):
 
 
 def substitute_vars(cmd, variables):
+    # Merge global vars with per-box vars; per-box takes priority
+    merged = {**global_vars, **variables}
     return re.sub(r'\{\{(\w+)\}\}',
-                  lambda m: variables.get(m.group(1), m.group(0)), cmd)
+                  lambda m: merged.get(m.group(1), m.group(0)), cmd)
 
 
 def default_variables(os_type):
@@ -474,6 +495,21 @@ def api_create_session():
 def api_vars_schema(os_type):
     schema = COMMON_VARS + (AD_VARS if os_type == 'ad' else [])
     return jsonify({'schema': schema, 'extra_vars': EXTRA_VARS})
+
+
+@app.route('/api/global_vars', methods=['GET'])
+def api_get_global_vars():
+    result = [{'key': v['key'], 'desc': v['desc'],
+               'value': global_vars.get(v['key'], '')}
+              for v in GLOBAL_VAR_DEFS]
+    return jsonify({'vars': result})
+
+
+@app.route('/api/global_vars', methods=['POST'])
+def api_set_global_vars():
+    data = request.json or {}
+    global_vars.update(data.get('vars', {}))
+    return jsonify({'status': 'ok', 'vars': global_vars})
 
 
 @app.route('/api/utils/<os_type>')
