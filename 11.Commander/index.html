@@ -31,6 +31,25 @@ body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospa
 .git-badge.upd{border-color:var(--yellow);color:var(--yellow);}
 .ml-auto{margin-left:auto;}
 
+/* global vars bar */
+.gvars-bar{background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;transition:max-height .2s;}
+.gvars-bar.collapsed{max-height:28px;}
+.gvars-bar.expanded{max-height:200px;}
+.gvars-hdr{display:flex;align-items:center;gap:8px;padding:5px 14px;cursor:pointer;user-select:none;}
+.gvars-hdr-label{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);}
+.gvars-hdr-arrow{font-size:10px;color:var(--muted);transition:transform .2s;}
+.gvars-bar.expanded .gvars-hdr-arrow{transform:rotate(180deg);}
+.gvars-body{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 8px;overflow-y:auto;max-height:160px;}
+.gvar-cell{display:flex;align-items:center;gap:4px;}
+.gvar-key{font-size:10px;color:var(--yellow);font-weight:600;white-space:nowrap;}
+.gvar-val{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:2px 5px;border-radius:3px;outline:none;width:140px;}
+.gvar-val:focus{border-color:var(--yellow);}
+.gvar-val.set{border-color:var(--green-dim);color:var(--green);}
+/* CMD/PS badge */
+.interp-badge{font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;flex-shrink:0;letter-spacing:.5px;}
+.interp-badge.cmd{background:rgba(232,135,58,.15);color:var(--orange);border:1px solid rgba(232,135,58,.3);}
+.interp-badge.ps{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.25);}
+
 /* box tabs */
 .boxtabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 8px;flex-shrink:0;overflow-x:auto;}
 .boxtab{display:flex;align-items:center;gap:6px;padding:7px 14px;cursor:pointer;border-bottom:2px solid transparent;color:var(--dim);font-size:12px;white-space:nowrap;user-select:none;}
@@ -192,6 +211,15 @@ kbd{background:var(--bg3);border:1px solid var(--border);border-radius:2px;paddi
   <div class="ml-auto"><button class="btn" onclick="refreshSessions()">↺ Sessions</button></div>
 </div>
 
+<div class="gvars-bar collapsed" id="gvars-bar">
+  <div class="gvars-hdr" onclick="toggleGvars()">
+    <span class="gvars-hdr-label">🌐 Global Variables</span>
+    <span class="gvars-hdr-arrow">▾</span>
+    <span id="gvars-summary" style="font-size:10px;color:var(--dim);margin-left:4px;"></span>
+  </div>
+  <div class="gvars-body" id="gvars-body"></div>
+</div>
+
 <div class="boxtabs" id="boxtabs">
   <button class="add-btn" onclick="openModal('mbox')" title="Add box">＋</button>
 </div>
@@ -248,14 +276,17 @@ kbd{background:var(--bg3);border:1px solid var(--border);border-radius:2px;paddi
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
-let boxes       = {};
-let curBox      = null;
-let curTab      = null;
-let plans       = {};
-let sessions    = [];
-let extraDefs   = [];
-let utilsOpen   = false;
-let utilsSecs   = [];
+let boxes         = {};
+let curBox        = null;
+let curTab        = null;
+let plans         = {};
+let sessions      = [];
+let extraDefs     = [];
+let utilsOpen     = false;
+let utilsSecs     = [];
+let scrollMemory  = {};  // tabId -> scrollTop
+let gvarsExpanded = false;
+let globalVars    = {};
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 async function init() {
@@ -263,6 +294,7 @@ async function init() {
   if (r.boxes) r.boxes.forEach(b => boxes[b.id] = b);
   updateGit(r.git);
   await refreshSessions();
+  await loadGlobalVars();
   renderBoxTabs();
   const ids = Object.keys(boxes);
   if (ids.length) await switchBox(ids[0]);
@@ -283,6 +315,52 @@ function updateGit(gs) {
     el.className = 'git-badge ok';
     el.textContent = `✓ ${gs.last_pull}`;
   }
+}
+
+// ── Global Variables ────────────────────────────────────────────────────────
+async function loadGlobalVars() {
+  const r = await api('GET', '/api/global_vars');
+  if (!r.vars) return;
+  const body = document.getElementById('gvars-body');
+  if (!body) return;
+  body.innerHTML = '';
+  r.vars.forEach(v => {
+    globalVars[v.key] = v.value || '';
+    const cell = document.createElement('div'); cell.className = 'gvar-cell';
+    const key  = document.createElement('span'); key.className = 'gvar-key'; key.textContent = v.key; key.title = v.desc;
+    const inp  = document.createElement('input'); inp.className = 'gvar-val' + (v.value ? ' set' : '');
+    inp.value = v.value || ''; inp.placeholder = v.desc; inp.dataset.gkey = v.key;
+    inp.addEventListener('input', () => onGvarInput(inp));
+    cell.appendChild(key); cell.appendChild(inp); body.appendChild(cell);
+  });
+  updateGvarSummary();
+}
+
+function onGvarInput(inp) {
+  const key = inp.dataset.gkey;
+  globalVars[key] = inp.value;
+  inp.classList.toggle('set', !!inp.value);
+  clearTimeout(inp._t);
+  inp._t = setTimeout(() => {
+    api('POST', '/api/global_vars', { vars: globalVars });
+    refreshVarHighlights(curBox);
+    if (utilsOpen) renderUtils(curBox);
+    updateGvarSummary();
+  }, 600);
+}
+
+function updateGvarSummary() {
+  const el  = document.getElementById('gvars-summary');
+  if (!el) return;
+  const set = Object.values(globalVars).filter(v => v).length;
+  const tot = Object.keys(globalVars).length;
+  el.textContent = set ? `(${set}/${tot} set)` : '';
+}
+
+function toggleGvars() {
+  gvarsExpanded = !gvarsExpanded;
+  const bar = document.getElementById('gvars-bar');
+  if (bar) { bar.classList.toggle('collapsed', !gvarsExpanded); bar.classList.toggle('expanded', gvarsExpanded); }
 }
 
 async function manualPull() {
@@ -374,6 +452,7 @@ async function switchBox(boxId) {
   curBox = boxId;
   curTab = null;
   utilsOpen = false;
+  scrollMemory = {};  // reset scroll memory for new box
   renderBoxTabs();
   buildLayout();
   buildUtilsOverlay();
@@ -457,6 +536,9 @@ async function renderLeft(boxId) {
         <button class="lbtn" onclick="openNewSess()">+ new</button>
       </div>
       <div class="ls-body">
+        <div style="font-size:9px;color:var(--muted);margin-bottom:4px;font-style:italic;">
+          Create: <span style="color:var(--dim);font-style:normal;">tmux new -s &lt;name&gt;</span>
+        </div>
         <div class="row">
           <select class="sel sess-sel" onchange="onSessChange('${boxId}',this.value)">
             <option value="">— none —</option>
@@ -758,6 +840,10 @@ function renderPlanTabs(boxId) {
 }
 
 function activateTab(boxId, sectionId) {
+  // Save scroll position of current tab before switching
+  const oldScroll = document.querySelector('#plan-col .cmds');
+  if (oldScroll && curTab) scrollMemory[curTab] = oldScroll.scrollTop;
+
   curTab = sectionId;
   document.querySelectorAll('.ptab').forEach((t, i) => {
     t.classList.toggle('active', (plans[boxId] || [])[i]?.id === sectionId);
@@ -812,6 +898,14 @@ function renderSection(boxId, sectionId) {
       const runB = document.createElement('button'); runB.className = 'crun'; runB.textContent = '▶';
       runB.onclick = e => { e.stopPropagation(); runCmd(boxId, key, cmd.cmd); };
 
+      // Interpreter badge (CMD or PS)
+      if (cmd.interpreter) {
+        const badge = document.createElement('span');
+        badge.className = 'interp-badge ' + cmd.interpreter;
+        badge.textContent = cmd.interpreter.toUpperCase();
+        runB.after(badge);  // insert after run button, before body
+      }
+
       const body = document.createElement('div'); body.className = 'cbody';
       if (cmd.comment) {
         const c = document.createElement('div'); c.className = 'ccmt';
@@ -844,9 +938,21 @@ function renderSection(boxId, sectionId) {
 
   col.appendChild(cmds);
 
-  // Auto-focus first command in section
-  const allRows = cmds.querySelectorAll('.crow');
-  if (allRows.length) allRows[0].focus();
+  // Restore scroll position if we've been here before, else focus first row
+  const savedScroll = scrollMemory[sectionId];
+  if (savedScroll) {
+    cmds.scrollTop = savedScroll;
+    // Focus the row closest to the saved scroll position
+    const rows = Array.from(cmds.querySelectorAll('.crow'));
+    const target = rows.find(r => r.offsetTop >= savedScroll);
+    if (target) target.focus();
+  } else {
+    const allRows = cmds.querySelectorAll('.crow');
+    if (allRows.length) allRows[0].focus();
+  }
+
+  // Wire scroll memory saving
+  cmds.addEventListener('scroll', () => { scrollMemory[sectionId] = cmds.scrollTop; }, {passive:true});
 }
 
 // ── Command ops ────────────────────────────────────────────────────────────
@@ -967,7 +1073,8 @@ function refreshVarHighlights(boxId) {
 }
 
 function allVars(box) {
-  return { ...(box.variables || {}), ...(box.custom_vars || {}) };
+  // Global vars as base, per-box vars override
+  return { ...globalVars, ...(box.variables || {}), ...(box.custom_vars || {}) };
 }
 
 function renderVars(cmd, vars) {
