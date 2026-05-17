@@ -292,6 +292,60 @@ def parse_ldap_records(text: str, wanted_attrs: list[str]) -> list[dict]:
 
     return [r for r in records if r]  # drop empty records
 
+
+# ─────────────────────────────────────────────────────────────
+#  FINDINGS FILTER HELPERS
+# ─────────────────────────────────────────────────────────────
+
+# Built-in descriptions that are never interesting as credential hints
+_BUILTIN_DESCRIPTIONS = {
+    "built-in account for administering the computer/domain",
+    "built-in account for guest access to the computer/domain",
+    "key distribution center service account",
+    "managed service account",
+}
+
+def _is_interesting_description(desc: str) -> bool:
+    """
+    Return True only if a description looks like it might contain
+    credentials or non-default information worth flagging.
+    Filters out: empty, (null), and known built-in description strings.
+    """
+    if not desc:
+        return False
+    cleaned = desc.strip().lower()
+    if cleaned in ("(null)", "null", "", "-"):
+        return False
+    if cleaned in _BUILTIN_DESCRIPTIONS:
+        return False
+    # Descriptions that are just the username repeated are also noise
+    return True
+
+# Well-known built-in group names that always have adminCount=1 —
+# flagging these as findings is pure noise.
+_BUILTIN_ADMIN_GROUPS = {
+    "administrators", "print operators", "backup operators", "replicator",
+    "domain controllers", "schema admins", "enterprise admins", "domain admins",
+    "server operators", "account operators", "read-only domain controllers",
+    "enterprise read-only domain controllers", "key admins", "enterprise key admins",
+    "group policy creator owners", "krbtgt",
+}
+
+def _is_notable_admincnt(sam: str, dn: str) -> bool:
+    """
+    Return True if an adminCount=1 object is actually interesting —
+    i.e. it's a user account, not a built-in group or service account.
+    Machine accounts (ending $) and well-known group names are excluded.
+    """
+    if sam.endswith("$"):
+        return False
+    if sam.lower() in _BUILTIN_ADMIN_GROUPS:
+        return False
+    # If the DN contains CN=Builtin it's a built-in container object
+    if "CN=Builtin" in dn:
+        return False
+    return True
+
 # ═════════════════════════════════════════════════════════════
 #  PHASE: SMB / RPC
 # ═════════════════════════════════════════════════════════════
@@ -309,7 +363,7 @@ def phase_smb(s: EnumState):
         if out:
             for line in out.splitlines():
                 log(f"  {line}")
-                if re.search(r"signing.*false", line, re.I):
+                if re.search(r"signing:False", line):  # case-sensitive — True/False are literals
                     s.add_finding("SMB Signing DISABLED — NTLM relay attacks viable")
                 if re.search(r"\[\+\].*guest", line, re.I):
                     s.add_finding("Guest/anonymous SMB access confirmed")
@@ -357,7 +411,9 @@ def phase_smb(s: EnumState):
             uname = re.search(r"user:\[(.+?)\]", line)
             rid   = re.search(r"rid:\[(.+?)\]",  line)
             if uname:
-                user_rows.append([uname.group(1), f"0x{rid.group(1)}" if rid else ""])
+                # rpcclient outputs rid:[0x1f4] — already contains 0x prefix
+                raw_rid = rid.group(1) if rid else ""
+                user_rows.append([uname.group(1), raw_rid])
         s.user_count = len(user_rows)
         print_table(["Username", "RID (hex)"], user_rows)
         ok(f"Found {s.user_count} domain users")
@@ -383,8 +439,8 @@ def phase_smb(s: EnumState):
                     name.group(1).strip() if name else "",
                     row_desc,
                 ])
-                if row_desc:
-                    s.add_finding(f"Possible creds in description — '{acct.group(1)}': {row_desc}")
+                if _is_interesting_description(row_desc):
+                    s.add_finding(f"Creds in description — '{acct.group(1)}': {row_desc}")
         if disp_rows:
             print_table(["Index", "Account", "Full Name", "Description"], disp_rows)
 
@@ -398,7 +454,8 @@ def phase_smb(s: EnumState):
             gname = re.search(r"group:\[(.+?)\]", line)
             rid   = re.search(r"rid:\[(.+?)\]",   line)
             if gname:
-                grp_rows.append([gname.group(1), f"0x{rid.group(1)}" if rid else ""])
+                raw_rid = rid.group(1) if rid else ""
+                grp_rows.append([gname.group(1), raw_rid])
         s.group_count = len(grp_rows)
         print_table(["Group Name", "RID (hex)"], grp_rows)
         ok(f"Found {s.group_count} domain groups")
@@ -411,7 +468,8 @@ def phase_smb(s: EnumState):
             gname = re.search(r"group:\[(.+?)\]", line)
             rid   = re.search(r"rid:\[(.+?)\]",   line)
             if gname:
-                alias_rows.append([gname.group(1), f"0x{rid.group(1)}" if rid else ""])
+                raw_rid = rid.group(1) if rid else ""
+                alias_rows.append([gname.group(1), raw_rid])
         print_table(["Builtin Alias", "RID (hex)"], alias_rows)
 
     info("→ querygroupmem 0x200 (Domain Admins)")
@@ -422,8 +480,9 @@ def phase_smb(s: EnumState):
             rid  = re.search(r"rid:\[(.+?)\]",  line)
             attr = re.search(r"attr:\[(.+?)\]", line)
             if rid:
-                da_rows.append([f"0x{rid.group(1)}", attr.group(1) if attr else ""])
-                s.add_finding(f"Domain Admin member — RID: 0x{rid.group(1)}")
+                raw_rid = rid.group(1)  # already contains 0x prefix from rpcclient
+                da_rows.append([raw_rid, attr.group(1) if attr else ""])
+                s.add_finding(f"Domain Admin member — RID: {raw_rid}")
         print_table(["Member RID", "Attributes"], da_rows)
     else:
         warn("Could not enumerate Domain Admins (RID 0x200).")
@@ -575,10 +634,12 @@ def phase_ldap(s: EnumState):
             uac  = r.get("useraccountcontrol", "")
             if sam:
                 rows.append([sam, cn, uac, desc])
-                if desc:
-                    s.add_finding(f"LDAP: '{sam}' has description: {desc}")
-                if uac in ("66048", "66080"):
-                    s.add_finding(f"LDAP: '{sam}' password set to never expire (UAC={uac})")
+                if _is_interesting_description(desc):
+                    s.add_finding(f"Creds in description — '{sam}': {desc}")
+                # 66048 = NORMAL_ACCOUNT|DONT_EXPIRE_PASSWORD
+                # Only flag non-machine, non-krbtgt accounts (machine accounts end in $)
+                if uac in ("66048", "66080") and not sam.endswith("$") and sam.lower() != "krbtgt":
+                    s.add_finding(f"Password never expires — '{sam}' (UAC={uac})")
         print_table(["sAMAccountName", "CN", "UAC", "Description"], rows)
         ok(f"Found {len(rows)} user objects via LDAP")
 
@@ -595,7 +656,11 @@ def phase_ldap(s: EnumState):
             if sam:
                 rows.append([sam, spn])
                 s.kerberoastable.append({"user": sam, "spn": spn})
-                s.add_finding(f"KERBEROASTABLE: {sam} — SPN: {spn}")
+                if sam.endswith("$"):
+                    # Machine accounts have 120-char random passwords — not crackable
+                    s.add_finding(f"KERBEROASTABLE (machine acct — skip): {sam} — SPN: {spn}")
+                else:
+                    s.add_finding(f"KERBEROASTABLE (crack me): {sam} — SPN: {spn}")
         s.spn_count = len(rows)
         if rows:
             print_table(["Account", "SPN"], rows)
@@ -634,7 +699,10 @@ def phase_ldap(s: EnumState):
             dn  = r.get("distinguishedname", "")
             if sam:
                 rows.append([sam, dn])
-                s.add_finding(f"AdminCount=1 (protected/high-value): {sam}")
+                # Only flag as a finding if it's a user account, not a well-known
+                # built-in group (Administrators, Print Operators, Replicator, etc.)
+                if _is_notable_admincnt(sam, dn):
+                    s.add_finding(f"AdminCount=1 user account (privileged group member): {sam}")
         if rows:
             print_table(["Account", "Distinguished Name"], rows)
 
