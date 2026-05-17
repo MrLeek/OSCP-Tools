@@ -241,7 +241,6 @@ HTML_PAGE = """<!DOCTYPE html>
   .btn-copy {
     padding: 3px 10px; font-size: 11px; border: 1px solid var(--border);
     border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer;
-    float: right; margin-top: -2px;
   }
   .btn-copy:hover { color: var(--text); border-color: var(--muted); }
   section { margin-top: 2rem; }
@@ -269,7 +268,8 @@ HTML_PAGE = """<!DOCTYPE html>
     background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
     padding: 10px 12px; margin-bottom: 8px;
   }
-  .cmd-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .cmd-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .cmd-label { font-size: 11px; color: var(--muted); }
   .cmd-note  { font-size: 11px; color: var(--amber); margin-top: 5px; }
   .cmd-text  { font-family: var(--mono); font-size: 12px; color: var(--green); word-break: break-all; }
   .hash-file {
@@ -277,6 +277,7 @@ HTML_PAGE = """<!DOCTYPE html>
     padding: 10px 12px; font-family: var(--mono); font-size: 12px; color: var(--purple);
     white-space: pre-wrap; word-break: break-all; margin-top: 8px;
   }
+  .hash-copy-row { margin-top: 6px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
   .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
   .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
@@ -284,35 +285,45 @@ HTML_PAGE = """<!DOCTYPE html>
   .metric-val.mono { font-size: 13px; font-family: var(--mono); }
   .empty { color: var(--muted); font-style: italic; font-size: 13px; }
   .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
-  #results { display: none; }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>// mimikatz parser</h1>
   <p class="tagline">Paste raw mimikatz output. Extracts credentials, identifies attack paths, generates commands.</p>
-  <form method="POST" action="/parse">
+  <form method="POST" action="/">
     <textarea name="data" placeholder="Paste mimikatz output here..."></textarea>
     <br>
     <button type="submit" class="btn">Parse output</button>
   </form>
 
-  <div id="results">
-    __RESULTS__
-  </div>
+  __RESULTS__
+
 </div>
 <script>
-function copyText(text, btn) {
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.btn-copy');
+  if (!btn) return;
+  const targetId = btn.getAttribute('data-target');
+  const text = targetId
+    ? document.getElementById(targetId).innerText
+    : btn.getAttribute('data-copy');
+  if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
     const orig = btn.textContent;
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = orig, 1500);
   });
-}
+});
 </script>
 </body>
 </html>
 """
+
+def h(s: str) -> str:
+    """HTML-escape a string for safe insertion into HTML content."""
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
 
 def render_results(r: dict, cmds: list) -> str:
     hostname = r["machine"].get("hostname", "—")
@@ -320,114 +331,145 @@ def render_results(r: dict, cmds: list) -> str:
     total_ntlm   = len(r["sam_accounts"]) + len(r["lsass_local"]) + len(r["lsass_domain"])
     total_cached = len(r["cached_creds"])
 
-    html = '<div id="results" style="display:block">'
+    # All copy payloads stored in a JS map keyed by element id.
+    # Nothing sensitive goes into inline onclick attributes.
+    copy_map = {}
+    uid = [0]
 
-    # Summary metrics
-    html += '<section>'
+    def copy_id(text: str) -> str:
+        uid[0] += 1
+        key = f"cp{uid[0]}"
+        copy_map[key] = text
+        return key
+
+    html = "<section>"
+
+    # Summary
     html += '<div class="section-title">Summary</div>'
     html += '<div class="grid">'
-    html += f'<div class="metric"><div class="metric-label">Hostname</div><div class="metric-val mono">{hostname}</div></div>'
-    html += f'<div class="metric"><div class="metric-label">Domain / FQDN</div><div class="metric-val mono">{fqdn}</div></div>'
+    html += f'<div class="metric"><div class="metric-label">Hostname</div><div class="metric-val mono">{h(hostname)}</div></div>'
+    html += f'<div class="metric"><div class="metric-label">Domain / FQDN</div><div class="metric-val mono">{h(fqdn)}</div></div>'
     html += f'<div class="metric"><div class="metric-label">NTLM hashes</div><div class="metric-val">{total_ntlm}</div></div>'
     html += f'<div class="metric"><div class="metric-label">MSCacheV2 hashes</div><div class="metric-val">{total_cached}</div></div>'
-    html += '</div>'
+    html += "</div>"
 
-    # Commands run
     if r["commands_run"]:
-        html += f'<div class="card"><div class="row"><span class="lbl">Commands detected</span><span class="val">{" &nbsp;·&nbsp; ".join(r["commands_run"])}</span></div></div>'
+        html += f'<div class="card"><div class="row"><span class="lbl">Commands detected</span><span class="val">{h(" · ".join(r["commands_run"]))}</span></div></div>'
     if r["dcsync_attempted"] and r["dcsync_failed"]:
-        html += '<div class="card"><div class="row"><span class="lbl">DCSync</span><span class="val" style="color:var(--red)">Failed — domain FQDN not supplied correctly</span></div></div>'
+        html += '<div class="card"><div class="row"><span class="lbl">DCSync</span><span class="val" style="color:var(--red)">Failed — FQDN not supplied (see corrected command below)</span></div></div>'
     if r["dpapi"]:
-        html += f'<div class="card"><div class="row"><span class="lbl">DPAPI_SYSTEM</span><span class="badge b-blue">present</span></div><div class="row"><span class="lbl">Full key</span><span class="val" style="color:var(--purple)">{r["dpapi"]}</span></div></div>'
-    html += '</section>'
+        html += f'<div class="card"><div class="row"><span class="lbl">DPAPI_SYSTEM</span><span class="badge b-blue">present</span></div><div class="row"><span class="lbl">Full key</span><span class="val" style="color:var(--purple)">{h(r["dpapi"])}</span></div></div>'
+    html += "</section>"
 
     html += '<hr class="divider">'
 
     # SAM accounts
-    html += '<section>'
-    html += f'<div class="section-title">Local accounts — SAM <span class="badge b-green">Pass-the-Hash</span></div>'
+    html += "<section>"
+    html += '<div class="section-title">Local accounts — SAM <span class="badge b-green">Pass-the-Hash</span></div>'
     if r["sam_accounts"]:
         for a in r["sam_accounts"]:
-            aes = f'<div class="row"><span class="lbl">AES256</span><span class="val">{a["aes256"]}</span></div>' if a["aes256"] else ""
+            aes = f'<div class="row"><span class="lbl">AES256</span><span class="val">{h(a["aes256"])}</span></div>' if a["aes256"] else ""
             html += f'''<div class="card">
-              <div class="row"><span class="lbl">User</span><span class="val">{hostname}\\{a["user"]}</span></div>
-              <div class="row"><span class="lbl">RID</span><span class="val">{a["rid"]}</span></div>
-              <div class="row"><span class="lbl">NTLM</span><span class="val">{a["ntlm"]}</span></div>
+              <div class="row"><span class="lbl">User</span><span class="val">{h(hostname)}\\{h(a["user"])}</span></div>
+              <div class="row"><span class="lbl">RID</span><span class="val">{h(a["rid"])}</span></div>
+              <div class="row"><span class="lbl">NTLM</span><span class="val">{h(a["ntlm"])}</span></div>
               {aes}
             </div>'''
     else:
         html += '<p class="empty">No SAM accounts parsed (was lsadump::sam run?)</p>'
-    html += '</section>'
+    html += "</section>"
 
     # LSASS local
     if r["lsass_local"]:
-        html += '<section>'
+        html += "<section>"
         html += '<div class="section-title">Local accounts — LSASS <span class="badge b-green">Pass-the-Hash</span></div>'
         for a in r["lsass_local"]:
             html += f'''<div class="card">
-              <div class="row"><span class="lbl">User</span><span class="val">{a["domain"]}\\{a["user"]}</span></div>
-              <div class="row"><span class="lbl">NTLM</span><span class="val">{a["ntlm"]}</span></div>
-              <div class="row"><span class="lbl">Session</span><span class="val">{a["session"]}</span></div>
+              <div class="row"><span class="lbl">User</span><span class="val">{h(a["domain"])}\\{h(a["user"])}</span></div>
+              <div class="row"><span class="lbl">NTLM</span><span class="val">{h(a["ntlm"])}</span></div>
+              <div class="row"><span class="lbl">Session</span><span class="val">{h(a["session"])}</span></div>
             </div>'''
-        html += '</section>'
+        html += "</section>"
 
     # LSASS domain users
     if r["lsass_domain"]:
-        html += '<section>'
+        html += "<section>"
         html += '<div class="section-title">Domain users — LSASS <span class="badge b-red">High value</span></div>'
         for a in r["lsass_domain"]:
             html += f'''<div class="card">
-              <div class="row"><span class="lbl">User</span><span class="val">{a["domain"]}\\{a["user"]}</span></div>
-              <div class="row"><span class="lbl">NTLM</span><span class="val">{a["ntlm"]}</span></div>
-              <div class="row"><span class="lbl">Session</span><span class="val">{a["session"]}</span></div>
+              <div class="row"><span class="lbl">User</span><span class="val">{h(a["domain"])}\\{h(a["user"])}</span></div>
+              <div class="row"><span class="lbl">NTLM</span><span class="val">{h(a["ntlm"])}</span></div>
+              <div class="row"><span class="lbl">Session</span><span class="val">{h(a["session"])}</span></div>
             </div>'''
-        html += '</section>'
+        html += "</section>"
 
     # Machine accounts
     if r["machine_accounts"]:
-        html += '<section>'
+        html += "<section>"
         html += '<div class="section-title">Machine accounts <span class="badge b-amber">Silver ticket possible</span></div>'
         for a in r["machine_accounts"]:
             html += f'''<div class="card">
-              <div class="row"><span class="lbl">Account</span><span class="val">{a["user"]}</span></div>
-              <div class="row"><span class="lbl">NTLM</span><span class="val">{a["ntlm"]}</span></div>
+              <div class="row"><span class="lbl">Account</span><span class="val">{h(a["user"])}</span></div>
+              <div class="row"><span class="lbl">NTLM</span><span class="val">{h(a["ntlm"])}</span></div>
             </div>'''
-        html += '</section>'
+        html += "</section>"
 
     # Cached creds
-    html += '<section>'
-    html += f'<div class="section-title">Cached domain credentials — MSCacheV2 <span class="badge b-amber">Offline crack only — cannot PtH</span></div>'
+    html += "<section>"
+    html += '<div class="section-title">Cached domain credentials — MSCacheV2 <span class="badge b-amber">Offline crack only — cannot PtH</span></div>'
     if r["cached_creds"]:
         for c in r["cached_creds"]:
             html += f'''<div class="card">
-              <div class="row"><span class="lbl">User</span><span class="val">{c["domain"]}\\{c["user"]}</span></div>
-              <div class="row"><span class="lbl">Hash</span><span class="val">{c["hash"]}</span></div>
-              <div class="row"><span class="lbl">Formatted</span><span class="val" style="color:var(--purple)">{c["formatted"]}</span></div>
+              <div class="row"><span class="lbl">User</span><span class="val">{h(c["domain"])}\\{h(c["user"])}</span></div>
+              <div class="row"><span class="lbl">Hash</span><span class="val">{h(c["hash"])}</span></div>
+              <div class="row"><span class="lbl">Formatted</span><span class="val" style="color:var(--purple)">{h(c["formatted"])}</span></div>
             </div>'''
-
         hash_file_content = "\n".join(c["formatted"] for c in r["cached_creds"])
-        safe_content = hash_file_content.replace("\\", "\\\\").replace("`", "\\`").replace("'", "\\'")
-        html += f'''<div class="hash-file" id="hashfile">{hash_file_content}</div>
-        <button class="btn-copy" style="float:none;margin-top:6px" onclick="copyText(`{safe_content}`, this)">Copy hashes.txt content</button>'''
+        hf_id = copy_id(hash_file_content)
+        html += f'<div class="hash-file" id="{hf_id}">{h(hash_file_content)}</div>'
+        html += f'<div class="hash-copy-row"><button class="btn-copy" data-target="{hf_id}">Copy hashes.txt content</button></div>'
     else:
         html += '<p class="empty">No cached credentials found (was lsadump::cache run?)</p>'
-    html += '</section>'
+    html += "</section>"
 
     html += '<hr class="divider">'
 
     # Commands
-    html += '<section>'
+    html += "<section>"
     html += '<div class="section-title">Next step commands</div>'
     for c in cmds:
-        safe_cmd = c["cmd"].replace("\\", "\\\\").replace("`", "\\`").replace("'", "\\'")
-        note_html = f'<div class="cmd-note">⚠ {c["note"]}</div>' if c["note"] else ""
+        cid = copy_id(c["cmd"])
+        note_html = f'<div class="cmd-note">&#9888; {h(c["note"])}</div>' if c["note"] else ""
         html += f'''<div class="cmd-block">
-          <div class="cmd-label">{c["label"]} <button class="btn-copy" onclick="copyText(`{safe_cmd}`, this)">Copy</button></div>
-          <div class="cmd-text">{c["cmd"]}</div>
+          <div class="cmd-header">
+            <span class="cmd-label">{h(c["label"])}</span>
+            <button class="btn-copy" data-target="{cid}">Copy</button>
+          </div>
+          <div class="cmd-text" id="{cid}">{h(c["cmd"])}</div>
           {note_html}
         </div>'''
-    html += '</section>'
-    html += '</div>'
+    html += "</section>"
+
+    # Emit the copy map as a JS object so data-target lookups work for
+    # elements whose innerText might include HTML entities
+    copy_json = json.dumps(copy_map)
+    html += f'<script>const _copyMap = {copy_json};</script>'
+    html += '''<script>
+document.addEventListener("click", function(e) {
+  const btn = e.target.closest(".btn-copy");
+  if (!btn) return;
+  const tid = btn.getAttribute("data-target");
+  const text = _copyMap[tid] !== undefined ? _copyMap[tid]
+             : (document.getElementById(tid) ? document.getElementById(tid).innerText : "");
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+});
+</script>'''
+
     return html
 
 
@@ -449,14 +491,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_page()
 
     def do_POST(self):
-        length  = int(self.headers.get("Content-Length", 0))
-        body    = self.rfile.read(length).decode("utf-8", errors="replace")
-        params  = parse_qs(body)
-        raw     = params.get("data", [""])[0]
+        length = int(self.headers.get("Content-Length", 0))
+        body   = self.rfile.read(length).decode("utf-8", errors="replace")
+        params = parse_qs(body)
+        raw    = params.get("data", [""])[0]
 
         if raw.strip():
-            r    = parse_mimikatz(raw)
-            cmds = build_commands(r)
+            r        = parse_mimikatz(raw)
+            cmds     = build_commands(r)
             rendered = render_results(r, cmds)
         else:
             rendered = ""
@@ -473,3 +515,4 @@ if __name__ == "__main__":
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n[*] Stopped.")
+    
