@@ -78,7 +78,6 @@ class EnumState:
     group_count:    int = 0
     share_count:    int = 0
     sid_count:      int = 0
-    priv_count:     int = 0
     spn_count:      int = 0
     asrep_count:    int = 0
     dns_host_count: int = 0
@@ -500,18 +499,10 @@ def phase_smb(s: EnumState):
         if re.search(r"complexity.*\b0\b|complexity.*(none|false)", text_lower):
             s.add_finding("No password complexity enforced")
 
-    # Privileges — display only, no findings generated.
-    # enumprivs against a DC returns the DC's system privilege set, not the
-    # authenticated user's token privileges. Flagging these as findings would
-    # falsely imply the current user has elevated access when they don't.
-    # Run 'whoami /priv' post-exploitation on a non-DC host for meaningful output.
-    sub("Session privileges (enumprivs) — informational only")
-    out = rpc(s, "enumprivs")
-    if out:
-        privs = re.findall(r"Se\w+", out)
-        s.priv_count = len(privs)
-        print_table(["Privilege Name"], [[p] for p in privs])
-        info(f"{s.priv_count} privileges listed (DC system context — not user token)")
+    # enumprivs intentionally removed — it calls LsaEnumeratePrivileges which
+    # returns all privileges defined on the DC, not the authenticated user's token.
+    # Output is identical on every Server 2022 DC and provides no actionable signal.
+    # Use 'whoami /priv' post-exploitation on a non-DC host instead.
 
     # Shares
     sub("Network shares (netshareenumall)")
@@ -974,7 +965,6 @@ def print_summary(s: EnumState):
     log(f"   ├─ Domain groups (RPC)  : {s.group_count}")
     log(f"   ├─ Shares found         : {s.share_count}")
     log(f"   ├─ SIDs enumerated      : {s.sid_count}")
-    log(f"   ├─ Session privileges   : {s.priv_count}")
     log(f"   ├─ Kerberoastable accts : {s.spn_count}")
     log(f"   ├─ AS-REP roastable     : {s.asrep_count}")
     log(f"   └─ DNS records found    : {s.dns_host_count}")
