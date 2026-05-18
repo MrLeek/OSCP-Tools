@@ -9,6 +9,7 @@ Usage:
     python3 peas_analyzer.py linpeas_output.txt
     cat linpeas_output.txt | python3 peas_analyzer.py
     ./linpeas.sh | python3 peas_analyzer.py
+    python3 peas_analyzer.py linpeas_output.txt --raw   # show matched source lines
 """
 
 import re
@@ -30,7 +31,6 @@ class C:
 
 # ==============================================================================
 # PLATFORM DETECTION
-# Looks for known linpeas/winpeas markers to label output source
 # ==============================================================================
 def detect_platform(content):
     windows_markers = [
@@ -58,8 +58,8 @@ def detect_platform(content):
 # ==============================================================================
 # PATTERN DEFINITIONS
 # Each entry is (pattern, description)
-# Description is used in the findings output instead of the raw matched line
-# where the raw line would be too noisy.
+# Patterns are matched against ANSI-stripped linpeas/winpeas output lines.
+# More specific patterns must come BEFORE more general ones within each list.
 # ==============================================================================
 
 CRITICAL_PATTERNS = [
@@ -82,27 +82,41 @@ CRITICAL_PATTERNS = [
     # Windows - Registry
     (r'AlwaysInstallElevated.*1',                       'AlwaysInstallElevated enabled (MSI privesc path)'),
 
-    # Windows - DLL Hijacking
-    (r'Possible DLL Hijacking',                         'Possible DLL hijacking opportunity'),
+    # Windows - DLL Hijacking / Writable binary folder
+    # More specific first - actual DLL file mentioned
+    (r'Possible DLL Hijacking.*\.dll',                 'DLL hijacking - missing or writable DLL file'),
+    # Writable folder - could be DLL hijack OR binary replacement, check for associated service
+    (r'Possible DLL Hijacking in binary folder.*AllAccess', 'Writable binary folder (Everyone:AllAccess) - check for associated service → binary replacement or DLL hijack'),
+    (r'Possible DLL Hijacking in binary folder.*WriteData',  'Writable binary folder (WriteData) - check for associated service → binary replacement or DLL hijack'),
+    (r'Possible DLL Hijacking in binary folder',        'Writable binary folder - check for associated service (binary replacement or DLL hijack)'),
 
     # Linux - SUID
     (r'SUID.*(pkexec|/usr/bin/pkexec)',                 'SUID: pkexec found (CVE-2021-4034 PwnKit)'),
     (r'SUID.*(sudo|/usr/bin/sudo)',                     'SUID: sudo binary is SUID'),
     (r'SUID.*(nmap|/usr/bin/nmap)',                     'SUID: nmap found (GTFOBins)'),
-    (r'SUID.*(vim|/usr/bin/vim)',                       'SUID: vim found (GTFOBins)'),
-    (r'SUID.*(python|perl|ruby|php)',                   'SUID: interpreter found (GTFOBins)'),
+    (r'SUID.*(vim?|/usr/bin/vim)',                      'SUID: vim found (GTFOBins)'),
+    (r'SUID.*(python3?|perl|ruby|php)',                 'SUID: interpreter found (GTFOBins)'),
     (r'SUID.*(bash|/bin/bash)',                         'SUID: bash is SUID'),
-    (r'SUID.*(cp|/bin/cp)',                             'SUID: cp found - can overwrite files as root'),
+    (r'SUID.*(cp|/bin/cp)\b',                          'SUID: cp found - can overwrite files as root'),
     (r'SUID.*(find|/usr/bin/find)',                     'SUID: find found (GTFOBins)'),
+    (r'SUID.*(wget|curl|base64)',                       'SUID: download/encode utility (GTFOBins)'),
+    (r'SUID.*(tar|zip|gzip)',                           'SUID: archive utility (GTFOBins)'),
+    (r'SUID.*\/(usr\/local|opt)\/',                     'SUID: binary in non-standard location - check manually'),
 
-    # Linux - Sudo
-    (r'\(ALL.*NOPASSWD.*ALL\)',                         'Sudo: (ALL) NOPASSWD: ALL - full root access'),
-    (r'NOPASSWD.*\/bin\/bash',                          'Sudo: NOPASSWD bash'),
-    (r'NOPASSWD.*\/bin\/sh',                            'Sudo: NOPASSWD sh'),
-    (r'NOPASSWD.*(python|perl|ruby|php)',               'Sudo: NOPASSWD interpreter'),
-    (r'NOPASSWD.*(vim|nano|less|more|man)',             'Sudo: NOPASSWD editor/pager (GTFOBins)'),
-    (r'NOPASSWD.*(find|nmap|awk|sed)',                  'Sudo: NOPASSWD utility (GTFOBins)'),
-    (r'NOPASSWD.*(cp|mv|tee|dd)',                       'Sudo: NOPASSWD file write utility'),
+    # Linux - Sudo (specific binaries first, catch-all last)
+    # Matches linpeas format: "User X may run the following commands"
+    (r'may run.*NOPASSWD.*\(ALL\).*ALL',                'Sudo: NOPASSWD ALL - immediate root (sudo -i)'),
+    (r'\(ALL.*\).*NOPASSWD.*ALL',                       'Sudo: NOPASSWD ALL - immediate root (sudo -i)'),
+    (r'NOPASSWD.*\/bin\/(bash|sh)\b',                   'Sudo: NOPASSWD shell - immediate root'),
+    (r'NOPASSWD.*\/usr\/bin\/env\b',                    'Sudo: NOPASSWD env (GTFOBins - instant shell)'),
+    (r'NOPASSWD.*\/usr\/bin\/git\b',                    'Sudo: NOPASSWD git (GTFOBins → sudo git -p help → !bash)'),
+    (r'NOPASSWD.*\/usr\/bin\/(python3?|perl|ruby|php)', 'Sudo: NOPASSWD interpreter (GTFOBins)'),
+    (r'NOPASSWD.*\/usr\/bin\/(vim?|nano|less|more|man)','Sudo: NOPASSWD editor/pager (GTFOBins)'),
+    (r'NOPASSWD.*\/usr\/bin\/(find|nmap|awk|sed|tar)',  'Sudo: NOPASSWD utility (GTFOBins)'),
+    (r'NOPASSWD.*\/usr\/bin\/(cp|mv|tee|dd|wget|curl)', 'Sudo: NOPASSWD file utility (GTFOBins)'),
+    (r'NOPASSWD.*\/usr\/bin\/(zip|ftp|ssh|mysql)',      'Sudo: NOPASSWD network/archive tool (GTFOBins)'),
+    (r'NOPASSWD.*\/usr\/sbin\/',                        'Sudo: NOPASSWD sbin binary - check GTFOBins'),
+    (r'NOPASSWD',                                       'Sudo: NOPASSWD entry found - check GTFOBins immediately'),
 
     # Linux - Writable critical files
     (r'Writable.*\/etc\/passwd',                        'Writable /etc/passwd (add root user)'),
@@ -112,6 +126,16 @@ CRITICAL_PATTERNS = [
 
     # Linux - NFS
     (r'no_root_squash',                                 'NFS: no_root_squash enabled (remote root file plant)'),
+
+    # Linux - CVEs explicitly flagged by linpeas (linpeas format: "[+] [CVE-XXXX-YYYY] name")
+    (r'\[\+\].*CVE-2021-3156',                         'CVE-2021-3156 Baron Samedit (sudo heap overflow → root)'),
+    (r'\[\+\].*CVE-2021-4034',                         'CVE-2021-4034 PwnKit (pkexec → root)'),
+    (r'\[\+\].*CVE-2022-0847',                         'CVE-2022-0847 DirtyPipe (kernel write → root)'),
+    (r'\[\+\].*CVE-2019-14287',                        'CVE-2019-14287 sudo UID bypass → root'),
+    (r'\[\+\].*CVE-2023-22809',                        'CVE-2023-22809 sudoedit path traversal → arbitrary file write'),
+    (r'\[\+\].*CVE-2022-2586',                         'CVE-2022-2586 nftables UAF → root'),
+    (r'\[\+\].*CVE-2021-22555',                        'CVE-2021-22555 netfilter heap overflow → root'),
+    (r'\[\+\]\s+\[CVE-',                               'CVE flagged by linpeas as exploitable - review findings file'),
 ]
 
 HIGH_PATTERNS = [
@@ -121,7 +145,7 @@ HIGH_PATTERNS = [
     (r'HKLM.*password',                                 'Credentials: Password in HKLM registry'),
     (r'Unattend.*password',                             'Credentials: Password in Unattend file'),
     (r'SAM.*SYSTEM.*readable',                          'SAM/SYSTEM files may be readable'),
-    (r'DPAPI.*master.*key',                             'DPAPI master key found'),
+    (r'DPAPI.*master.*key.*[A-Z]:\\',                'DPAPI master key found - path identified'),
     (r'\.rdp.*password',                                'RDP file with saved password'),
     (r'wifi.*password|WifiPassword',                    'WiFi password in config'),
 
@@ -136,39 +160,38 @@ HIGH_PATTERNS = [
     # Windows - PATH hijacking
     (r'Writable.*PATH.*directory',                      'Writable directory in system PATH'),
 
-    # Linux - Sudo version
-    (r'Sudo version 1\.8\.(1[0-9]|2[0-8])',            'Sudo version may be vulnerable to CVE-2021-3156 (Baron Samedit)'),
+    # Linux - Sudo version (linpeas outputs "Sudo version X.Y.Z")
+    (r'Sudo version 1\.8\.(2[0-9]|3[0-1])',            'Sudo 1.8.20-1.8.31 - likely vulnerable to CVE-2021-3156'),
+    (r'Sudo version 1\.9\.[0-5][^0-9]',                'Sudo 1.9.0-1.9.5 - likely vulnerable to CVE-2021-3156'),
+    (r'Sudo version 1\.9\.(6|7|8|9|10|11)[^0-9]',      'Sudo version - check CVE-2023-22809 (sudoedit)'),
     (r'Sudo version 1\.[0-7]\.',                        'Old sudo version - check CVEs'),
 
     # Linux - Capabilities
-    (r'cap_setuid',                                     'Capability: cap_setuid set (privesc path)'),
-    (r'cap_net_raw',                                    'Capability: cap_net_raw set'),
+    (r'cap_setuid',                                     'Capability: cap_setuid set (privesc path - check GTFOBins)'),
     (r'cap_dac_override',                               'Capability: cap_dac_override set (bypass file permissions)'),
     (r'cap_dac_read_search',                            'Capability: cap_dac_read_search set (read any file)'),
+    (r'cap_net_raw',                                    'Capability: cap_net_raw set'),
+    (r'cap_sys_admin',                                  'Capability: cap_sys_admin set (near god-mode)'),
+    (r'cap_setgid',                                     'Capability: cap_setgid set'),
 
     # Linux - Writable systemd/init
     (r'Writable.*\.service',                            'Writable systemd service file'),
     (r'Writable.*\/etc\/init\.d',                       'Writable init.d script'),
 
-    # Linux - LD_PRELOAD
-    (r'LD_PRELOAD',                                     'LD_PRELOAD in sudo env_keep (library hijack path)'),
-    (r'LD_LIBRARY_PATH',                                'LD_LIBRARY_PATH in sudo env_keep'),
+    # Linux - LD_PRELOAD / LD_LIBRARY_PATH
+    (r'env_keep.*LD_PRELOAD',                           'LD_PRELOAD in sudo env_keep (library hijack path)'),
+    (r'env_keep.*LD_LIBRARY_PATH',                      'LD_LIBRARY_PATH in sudo env_keep (library hijack path)'),
 
     # Linux - Cron
     (r'Writable.*cron\.d',                              'Writable /etc/cron.d directory'),
     (r'cron.*script.*writable',                         'Cron script is writable'),
     (r'PATH.*cron.*writable',                           'Writable directory in cron PATH'),
 
-    # Linux - SUID (less common)
-    (r'SUID.*(wget|curl|base64)',                       'SUID: download/encode utility (GTFOBins)'),
-    (r'SUID.*(tar|zip|gzip)',                           'SUID: archive utility (GTFOBins)'),
-    (r'SUID.*\/(usr\/local|opt)\/',                     'SUID: binary in non-standard location'),
-
     # Linux - SSH keys
     (r'Readable.*id_rsa',                               'SSH: readable private key found'),
     (r'\.ssh.*authorized_keys.*writable',               'SSH: writable authorized_keys'),
 
-    # Linux - Kernel
+    # Linux - Kernel version
     (r'Linux version [2-4]\.',                          'Old kernel version - check local exploits'),
 ]
 
@@ -186,37 +209,40 @@ MEDIUM_PATTERNS = [
 
     # Windows - Network
     (r'Listening.*127\.0\.0\.1',                        'Service listening on localhost only (port forward candidate)'),
-    (r'Active.*connections',                            'Active network connections - review for internal services'),
+
+    # Linux - Passwords in config files
+    (r'(password|passwd)\s*[=:]\s*\S+',                'Possible plaintext password in config/file'),
+    (r'define\s*\(\s*[\'"].*pass',                      'Possible password in define statement (wp-config?)'),
+    (r'DB_PASSWORD',                                    'Database password found in config'),
+    (r'wp-config\.php',                                 'WordPress config file found - check for DB credentials'),
 
     # Linux - General interesting
     (r'Readable.*\/etc\/passwd',                        'Can read /etc/passwd (user enumeration)'),
-    (r'history.*file.*found',                           'Shell history file found'),
     (r'\.bash_history.*readable',                       'Readable .bash_history'),
-    (r'config.*password|password.*config',              'Possible password in config file'),
     (r'Interesting.*file.*\/var\/www',                  'Interesting file in web root'),
     (r'Interesting.*file.*\/opt',                       'Interesting file in /opt'),
-    (r'Interesting.*\.conf.*password',                  'Config file may contain password'),
     (r'MySQL.*running as root',                         'MySQL running as root (UDF exploit path)'),
-    (r'Docker.*socket.*writable|docker\.sock',          'Writable Docker socket (container escape)'),
+    (r'docker\.sock',                                   'Writable Docker socket (container escape)'),
     (r'lxd|lxc',                                       'LXD/LXC group membership (container escape)'),
-    (r'disk.*group',                                    'Member of disk group (read raw disk)'),
-    (r'adm.*group',                                     'Member of adm group (read logs)'),
+    (r'\bdisk\b.*group',                                'Member of disk group (read raw disk)'),
+    (r'\badm\b.*group',                                 'Member of adm group (read logs)'),
 
     # Linux - Network
     (r'127\.0\.0\.1.*LISTEN',                           'Service on localhost only (port forward candidate)'),
-    (r'Active Internet connections',                    'Active connections - review for internal services'),
 ]
 
 INFO_PATTERNS = [
     (r'Running as.*root',                               'Already running as root'),
     (r'whoami.*root',                                   'Already root'),
     (r'Current user.*Administrator',                    'Already Administrator'),
-    (r'hostname',                                       'Hostname identified'),
-    (r'OS.*Version|Windows.*Version',                  'OS version identified'),
+    (r'OS Name.*Windows|Windows.*Version.*\d{4}|ProductName.*Windows', 'OS version identified'),
+    (r'Linux version \d',                               'Kernel version identified'),
+    (r'Hostname[=:\s]',                                 'Hostname identified'),
 ]
 
 # ==============================================================================
 # CORE PARSER
+# Deduplicates findings by description to prevent repeated capability/group hits
 # ==============================================================================
 def parse_peas(content):
     findings = {
@@ -224,6 +250,14 @@ def parse_peas(content):
         'HIGH':     [],
         'MEDIUM':   [],
         'INFO':     []
+    }
+
+    # Track seen descriptions per severity to deduplicate
+    seen = {
+        'CRITICAL': set(),
+        'HIGH':     set(),
+        'MEDIUM':   set(),
+        'INFO':     set(),
     }
 
     pattern_map = [
@@ -244,11 +278,13 @@ def parse_peas(content):
                 break
             for pattern, description in patterns:
                 if re.search(pattern, stripped, re.I):
-                    # Store both the description and the raw line for context
-                    findings[severity].append({
-                        'description': description,
-                        'raw':         stripped[:200]  # cap line length
-                    })
+                    # Deduplicate by description — avoid 6x cap_net_raw etc.
+                    if description not in seen[severity]:
+                        seen[severity].add(description)
+                        findings[severity].append({
+                            'description': description,
+                            'raw':         stripped[:200]
+                        })
                     matched = True
                     break
 
@@ -294,7 +330,6 @@ def print_findings(findings, platform, show_raw=False):
         print(f"\n{colour}{C.BOLD}=== {severity} ({len(items)} findings) ==={C.RESET}")
         print(f"{C.DIM}{'-' * 65}{C.RESET}")
 
-        # Cap output per severity to avoid noise
         display_limit = {'CRITICAL': 20, 'HIGH': 15, 'MEDIUM': 10, 'INFO': 5}
         limit = display_limit[severity]
 
@@ -353,13 +388,10 @@ def save_findings(findings, platform, source_name):
 # MAIN
 # ==============================================================================
 def main():
-    # Determine input source
     if not sys.stdin.isatty():
-        # Data is being piped in
         content     = sys.stdin.read()
         source_name = 'piped_input'
-    elif len(sys.argv) >= 2:
-        # File argument provided
+    elif len(sys.argv) >= 2 and not sys.argv[1].startswith('--'):
         filepath = sys.argv[1]
         if not os.path.isfile(filepath):
             print(f"[!] File not found: {filepath}")
@@ -370,27 +402,25 @@ def main():
     else:
         print(f"Usage:")
         print(f"  python3 peas_analyzer.py <peas_output_file>")
+        print(f"  python3 peas_analyzer.py <peas_output_file> --raw")
         print(f"  cat peas_output.txt | python3 peas_analyzer.py")
         print(f"  ./linpeas.sh | python3 peas_analyzer.py")
         sys.exit(1)
 
-    # Strip ANSI colour codes from PEAS output
+    # Aggressive ANSI/escape code stripping
     content = re.sub(r'\x1b\[[0-9;]*[mGKHF]', '', content)
-    content = re.sub(r'\x1b\][^\x07]*\x07', '', content)  # strip OSC sequences too
+    content = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', content)
+    content = re.sub(r'\x1b\][^\x07]*\x07', '', content)
+    content = re.sub(r'\x1b[()][AB012]', '', content)
+    content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', content)
 
-    # Detect platform
     platform = detect_platform(content)
-
-    # Parse
     findings = parse_peas(content)
 
-    # Show raw matched lines if --raw flag passed
     show_raw = '--raw' in sys.argv
 
-    # Print to terminal
     print_findings(findings, platform, show_raw)
 
-    # Save to file
     findings_file = save_findings(findings, platform, source_name)
     print(f"{C.GREEN}[*] Findings saved to: {findings_file}{C.RESET}\n")
 
