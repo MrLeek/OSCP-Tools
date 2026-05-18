@@ -45,6 +45,28 @@ body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospa
 .gvar-val{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:2px 5px;border-radius:3px;outline:none;width:140px;}
 .gvar-val:focus{border-color:var(--yellow);}
 .gvar-val.set{border-color:var(--green-dim);color:var(--green);}
+/* Collapsible command groups */
+.cgroup-hdr{display:flex;align-items:center;gap:8px;padding:7px 10px;margin:6px 0 2px;
+  background:linear-gradient(90deg,rgba(210,153,34,.15),rgba(210,153,34,.04));
+  border:1px solid rgba(210,153,34,.4);border-left:4px solid var(--yellow);
+  border-radius:var(--r);cursor:pointer;user-select:none;transition:background .15s;}
+.cgroup-hdr:hover{background:linear-gradient(90deg,rgba(210,153,34,.25),rgba(210,153,34,.08));}
+.cgroup-hdr.expanded{border-left-color:var(--green);
+  background:linear-gradient(90deg,rgba(63,185,80,.12),rgba(63,185,80,.03));}
+.cgroup-hdr.expanded{border-color:rgba(63,185,80,.4);border-left:4px solid var(--green);}
+.cgroup-icon{font-size:14px;flex-shrink:0;}
+.cgroup-label{flex:1;font-size:11px;font-weight:600;color:var(--yellow);letter-spacing:.5px;}
+.cgroup-hdr.expanded .cgroup-label{color:var(--green);}
+.cgroup-count{font-size:10px;color:var(--muted);background:var(--bg4);
+  padding:1px 6px;border-radius:8px;white-space:nowrap;}
+.cgroup-arrow{font-size:10px;color:var(--muted);transition:transform .2s;flex-shrink:0;}
+.cgroup-hdr.expanded .cgroup-arrow{transform:rotate(90deg);}
+.cgroup-body{border-left:2px solid rgba(210,153,34,.3);margin-left:6px;
+  padding-left:6px;display:flex;flex-direction:column;gap:1px;}
+.cgroup-hdr.expanded ~ .cgroup-body,
+.cgroup-body.open{display:flex;}
+.cgroup-body:not(.open){display:none;}
+
 /* CMD/PS badge */
 .interp-badge{font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;flex-shrink:0;letter-spacing:.5px;}
 .interp-badge.cmd{background:rgba(232,135,58,.15);color:var(--orange);border:1px solid rgba(232,135,58,.3);}
@@ -285,6 +307,7 @@ let extraDefs     = [];
 let utilsOpen     = false;
 let utilsSecs     = [];
 let scrollMemory  = {};  // tabId -> scrollTop
+let groupState    = {};  // groupKey -> true/false (expanded)
 let gvarsExpanded = false;
 let globalVars    = {};
 
@@ -453,6 +476,7 @@ async function switchBox(boxId) {
   curTab = null;
   utilsOpen = false;
   scrollMemory = {};  // reset scroll memory for new box
+  groupState   = {};  // reset group expanded state for new box
   renderBoxTabs();
   buildLayout();
   buildUtilsOverlay();
@@ -888,22 +912,62 @@ function renderSection(boxId, sectionId) {
     hdr.innerHTML = `<span>${esc(secLabel)}</span><span class="sec-prog">${secDone}/${sec.commands.length}</span>`;
     cmds.appendChild(hdr);
 
+    // Group commands by their group tag, preserving order
+    const groupBodies = {};  // groupName -> DOM element
+    let   currentGroupName = null;
+
     sec.commands.forEach((cmd, ci) => {
       const key    = `${sectionId}:${si}:${ci}`;
       const isDone = done.has(key);
-      const row    = document.createElement('div');
+
+      // If this command starts a new group, create the group header + body
+      if (cmd.group && cmd.group !== currentGroupName) {
+        currentGroupName   = cmd.group;
+        const gKey         = `${sectionId}:${si}:${cmd.group}`;
+        const isExpanded   = groupState[gKey] || false;
+        const groupCmds    = sec.commands.filter(c => c.group === cmd.group);
+
+        const hdr = document.createElement('div');
+        hdr.className = 'cgroup-hdr' + (isExpanded ? ' expanded' : '');
+        hdr.dataset.gkey = gKey;
+        hdr.innerHTML =
+          '<span class="cgroup-icon">⚡</span>' +
+          `<span class="cgroup-label">${esc(cmd.group)}</span>` +
+          `<span class="cgroup-count">${groupCmds.length} cmd${groupCmds.length !== 1 ? 's' : ''}</span>` +
+          '<span class="cgroup-arrow">▶</span>';
+
+        const body = document.createElement('div');
+        body.className = 'cgroup-body' + (isExpanded ? ' open' : '');
+        body.dataset.gkey = gKey;
+
+        hdr.onclick = () => {
+          const nowExpanded = !groupState[gKey];
+          groupState[gKey]  = nowExpanded;
+          hdr.classList.toggle('expanded', nowExpanded);
+          body.classList.toggle('open', nowExpanded);
+        };
+
+        groupBodies[cmd.group] = body;
+        cmds.appendChild(hdr);
+        cmds.appendChild(body);
+      } else if (!cmd.group) {
+        currentGroupName = null;
+      }
+
+      // Build the command row
+      const row = document.createElement('div');
       row.className = 'crow' + (isDone ? ' done' : '');
-      row.tabIndex  = 0;
+      row.tabIndex  = cmd.group ? -1 : 0;  // not tab-focusable when in collapsed group
+      row.dataset.group = cmd.group || '';
 
       const runB = document.createElement('button'); runB.className = 'crun'; runB.textContent = '▶';
       runB.onclick = e => { e.stopPropagation(); runCmd(boxId, key, cmd.cmd); };
 
-      // Interpreter badge (CMD or PS)
       if (cmd.interpreter) {
         const badge = document.createElement('span');
         badge.className = 'interp-badge ' + cmd.interpreter;
         badge.textContent = cmd.interpreter.toUpperCase();
-        runB.after(badge);  // insert after run button, before body
+        runB.after(badge);
       }
 
       const body = document.createElement('div'); body.className = 'cbody';
@@ -932,7 +996,12 @@ function renderSection(boxId, sectionId) {
         if (e.key === 'd' && !e.ctrlKey) toggleDone(boxId, key, sectionId);
       });
 
-      cmds.appendChild(row);
+      // Append to group body if grouped, otherwise directly to cmds
+      if (cmd.group && groupBodies[cmd.group]) {
+        groupBodies[cmd.group].appendChild(row);
+      } else {
+        cmds.appendChild(row);
+      }
     });
   });
 
@@ -1137,7 +1206,11 @@ document.addEventListener('keydown', e => {
 
   const focused = document.activeElement;
   const isCrow  = focused && focused.classList.contains('crow');
-  const allRows = Array.from(document.querySelectorAll('#plan-col .crow'));
+  // Only include rows that are visible (not inside a collapsed group body)
+  const allRows = Array.from(document.querySelectorAll('#plan-col .crow')).filter(r => {
+    const grpBody = r.closest('.cgroup-body');
+    return !grpBody || grpBody.classList.contains('open');
+  });
   if (!allRows.length) return;
 
   if (e.key === 'Enter') {
