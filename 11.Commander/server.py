@@ -172,7 +172,16 @@ def parse_command_file(filepath):
         if not s:
             current_comment = None
             continue
-        if s.startswith('#'):
+        if s.startswith('#!cmd ') or s.startswith('#!ps '):
+            interpreter = 'cmd' if s.startswith('#!cmd ') else 'ps'
+            cmd_text = s[6:].strip() if interpreter == 'cmd' else s[5:].strip()
+            current_commands.append({
+                'cmd': cmd_text,
+                'comment': current_comment,
+                'interpreter': interpreter,
+            })
+            current_comment = None
+        elif s.startswith('#'):
             inner = s.lstrip('#').strip()
             if inner.startswith('===') and inner.endswith('==='):
                 if current_commands:
@@ -183,18 +192,10 @@ def parse_command_file(filepath):
             else:
                 current_comment = inner
         else:
-            interpreter = None
-            cmd_text = s
-            if s.startswith('#!cmd '):
-                interpreter = 'cmd'
-                cmd_text = s[6:].strip()
-            elif s.startswith('#!ps '):
-                interpreter = 'ps'
-                cmd_text = s[5:].strip()
             current_commands.append({
-                'cmd': cmd_text,
+                'cmd': s,
                 'comment': current_comment,
-                'interpreter': interpreter,
+                'interpreter': None,
             })
             current_comment = None
     if current_commands:
