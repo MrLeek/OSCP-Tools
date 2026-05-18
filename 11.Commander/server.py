@@ -167,6 +167,8 @@ def parse_command_file(filepath):
         lines = Path(filepath).read_text(errors='replace').splitlines()
     except Exception:
         return []
+    current_group = None   # active collapsible group name
+
     for line in lines:
         s = line.strip()
         if not s:
@@ -179,6 +181,7 @@ def parse_command_file(filepath):
                 'cmd': cmd_text,
                 'comment': current_comment,
                 'interpreter': interpreter,
+                'group': current_group,
             })
             current_comment = None
         elif s.startswith('#'):
@@ -189,6 +192,13 @@ def parse_command_file(filepath):
                     current_commands = []
                 current_section = inner.strip('= ').strip()
                 current_comment = None
+                current_group   = None
+            elif inner.startswith('>>> '):
+                current_group   = inner[4:].strip()
+                current_comment = None
+            elif inner == '<<<':
+                current_group   = None
+                current_comment = None
             else:
                 current_comment = inner
         else:
@@ -196,6 +206,7 @@ def parse_command_file(filepath):
                 'cmd': s,
                 'comment': current_comment,
                 'interpreter': None,
+                'group': current_group,
             })
             current_comment = None
     if current_commands:
