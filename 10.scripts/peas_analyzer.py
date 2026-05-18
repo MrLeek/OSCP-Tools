@@ -211,7 +211,7 @@ MEDIUM_PATTERNS = [
     (r'Listening.*127\.0\.0\.1',                        'Service listening on localhost only (port forward candidate)'),
 
     # Linux - Passwords in config files
-    (r'(password|passwd)\s*[=:]\s*\S+',                'Possible plaintext password in config/file'),
+    (r'(password|passwd)\s*[=:]\s*(?!CanChange|NotExpi|Req\b|None\b|Yes\b|No\b|True\b|False\b|Last|Age|Min|Max|Length|History|Prop)\S{6,}', 'Possible plaintext password in config/file'),
     (r'define\s*\(\s*[\'"].*pass',                      'Possible password in define statement (wp-config?)'),
     (r'DB_PASSWORD',                                    'Database password found in config'),
     (r'wp-config\.php',                                 'WordPress config file found - check for DB credentials'),
